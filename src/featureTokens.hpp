@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/**
+ * @file featureTokens.hpp
+ *
+ * @copyright Copyright (C) 2021-2026 srcML, LLC. (www.srcML.org)
+ *
+ * This file is part of scalar-cpp.
+ */
+
+// The feature tokens and the position tokens that precede the words of an identifier in the SCALAR model input
+// Port of src/lm_based_tagger/distilbert_preprocessing.py of SCANL/scanl_tagger at 33f0327 (GPL-3.0)
+
+#ifndef SCALAR_FEATURE_TOKENS_HPP
+#define SCALAR_FEATURE_TOKENS_HPP
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace scalar {
+
+// The inputs of one identifier besides its words, as DistilBertTagger.tag_identifier gathers
+//   them. An empty string stands for an unknown value, as None does in the Python.
+struct IdentifierRow {
+    std::string context;     // such as FUNCTION or PARAMETER
+    std::string systemName;
+    std::string type;
+    std::string language;
+};
+
+// The tokens of the model input before tokenization: the feature tokens, then each word
+//   after its position token
+struct ModelInputTokens {
+    std::vector<std::string> tokens;
+    std::size_t              featureCount = 0;  // the number of leading feature tokens
+};
+
+// The ten features that a checkpoint may select, in the order of AVAILABLE_FEATURES
+const std::vector<std::string>& availableFeatures();
+
+// The features of checkpoints saved without a feature list, such as sourceslicer/scalar_lm_best
+const std::vector<std::string>& legacyFeatures();
+
+// normalize_selected_features: strips the names, drops empty and repeated ones, and returns
+//   them in model-input order. No list selects every available feature. Throws
+//   std::invalid_argument with the message of the Python on an unknown name.
+std::vector<std::string> normalizeSelectedFeatures(const std::optional<std::vector<std::string>>& selected);
+
+// The features of a checkpoint, as DistilBertTagger.__init__ selects them: the saved list,
+//   or the legacy list when the config saves none
+std::vector<std::string> modelFeatures(const std::optional<std::vector<std::string>>& savedFeatures);
+
+// The selected_features list of a config.json; none when the key is missing or null.
+//   Throws std::runtime_error on another kind of value.
+std::optional<std::vector<std::string>> readSavedFeatures(const std::string& configPath);
+
+// get_feature_tokens: the feature tokens of an identifier for a feature list, which is
+//   normalized first. Throws std::invalid_argument on a byte above 0x7F in the row or the words.
+std::vector<std::string> featureTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+                                       const std::vector<std::string>& features);
+
+// build_model_input_tokens: the feature tokens, then @pos_0, @pos_1, or @pos_2 before each word
+ModelInputTokens buildModelInputTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+                                       const std::vector<std::string>& features);
+
+} // namespace scalar
+
+#endif

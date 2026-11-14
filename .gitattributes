@@ -1,0 +1,5 @@
+# The tables and the golden files must keep their bytes on every checkout, since the tests compare them
+# byte for byte with the answers of the Python SCALAR
+data/** -text
+tests/data/** -text
+tools/identifiers_tag.tsv -text
