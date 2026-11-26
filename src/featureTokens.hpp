@@ -8,7 +8,7 @@
  */
 
 // The feature tokens and the position tokens that precede the words of an identifier in the SCALAR model input
-// Port of src/lm_based_tagger/distilbert_preprocessing.py of SCANL/scanl_tagger at 33f0327 (GPL-3.0)
+// Port of scalar_tagger/lm_based_tagger/distilbert_preprocessing.py of SCANL/scanl_tagger (GPL-3.0)
 
 #ifndef SCALAR_FEATURE_TOKENS_HPP
 #define SCALAR_FEATURE_TOKENS_HPP
@@ -36,19 +36,22 @@ struct ModelInputTokens {
     std::size_t              featureCount = 0;  // the number of leading feature tokens
 };
 
-// The ten features that a checkpoint may select, in the order of AVAILABLE_FEATURES
+// The features that a checkpoint may select, in the order of AVAILABLE_FEATURES
 const std::vector<std::string>& availableFeatures();
 
-// The features of checkpoints saved without a feature list, such as sourceslicer/scalar_lm_best
+// The features of checkpoints saved without a feature list, such as sourceslicer/scalar_lm_best of
+//   earlier releases
 const std::vector<std::string>& legacyFeatures();
 
 // normalize_selected_features: strips the names, drops empty and repeated ones, and returns
-//   them in model-input order. No list selects every available feature. Throws
+//   them in model-input order. No list selects DEFAULT_FEATURES, every available feature but the
+//   opt-in ones. Throws
 //   std::invalid_argument with the message of the Python on an unknown name.
 std::vector<std::string> normalizeSelectedFeatures(const std::optional<std::vector<std::string>>& selected);
 
 // The features of a checkpoint, as DistilBertTagger.__init__ selects them: the saved list,
-//   or the legacy list when the config saves none
+//   or the legacy list when the config saves none. Throws std::runtime_error on a feature that
+//   the port does not compute, such as lead_word.
 std::vector<std::string> modelFeatures(const std::optional<std::vector<std::string>>& savedFeatures);
 
 // The selected_features list of a config.json; none when the key is missing or null.

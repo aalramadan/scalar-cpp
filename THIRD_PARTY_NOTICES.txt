@@ -3,12 +3,13 @@ Third-party notices of the SCALAR port
 The files of scalar-cpp carry the license GPL-3.0-only, except include/json.hpp of
 nlohmann/json 3.12.0, which carries the MIT license stated in the file.
 They port code of the projects below, whose licenses allow this use and ask to
-keep their notices. The header of each source file names the file and the version
-it ports. The tables of data/ronin come from the data files of Spiral.
+keep their notices. The header of each source file names the file it ports, and
+the entries below name the versions. The tables of data/ronin come from the data
+files of Spiral.
 
 ==============================================================================
-SCALAR, SCANL/scanl_tagger, branch scalar-3-0, commit 33f0327. GPL-3.0.
-Ported in featureTokens, modelInput, distilbertCrf, and scalarTagger.
+SCALAR, SCANL/scanl_tagger, branch scalar_30_experimental, tag v3.0.0-rc.3, commit 728f1e1. GPL-3.0.
+Ported in featureTokens, modelInput, distilbertCrf, scalarRelease, and scalarTagger.
 
 ==============================================================================
 Spiral, cnewman fork, commit dff5373. GPL-3.0.

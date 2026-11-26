@@ -8,13 +8,14 @@
  */
 
 // The feature tokens and the position tokens that precede the words of an identifier in the SCALAR model input
-// Port of src/lm_based_tagger/distilbert_preprocessing.py of SCANL/scanl_tagger at 33f0327 (GPL-3.0)
+// Port of scalar_tagger/lm_based_tagger/distilbert_preprocessing.py of SCANL/scanl_tagger (GPL-3.0)
 
 #include "featureTokens.hpp"
 
 #include "asciiText.hpp"
 #include "jsonReader.hpp"
 #include "pythonSum.hpp"
+#include "scalarRelease.hpp"
 #include "sequenceMatcher.hpp"
 
 #include <algorithm>
@@ -468,19 +469,52 @@ std::string normalizeLanguage(std::string_view language) {
     return "@lang_" + replaceAll(replaceAll(toLowerAscii(pythonStrip(language)), "++", "pp"), "#", "sharp");
 }
 
+// get_lead_shape_feature_tokens: the length and the case of the first word, and whether the next word
+//   follows it after an underscore or in camelCase
+Tokens leadShapeFeatureTokens(const Words& words) {
+    if (words.empty()) return {"@lead_none"};
+    const std::string& first  = words.front();
+    const std::string  length = first.size() == 1 ? "@lead_len1" : first.size() <= 3 ? "@lead_len2_3" : "@lead_len4";
+
+    std::size_t letters = 0;
+    std::size_t upper   = 0;
+    char        firstLetter = '\0';
+    for (const char c : first) {
+        if (!isAsciiLetter(c)) continue;
+        if (letters++ == 0) firstLetter = c;
+        if (isAsciiUpper(c)) ++upper;
+    }
+    std::string casing;
+    if (letters == 0) casing = "@lead_nocase";
+    else if (upper == letters) casing = letters > 1 ? "@lead_upper" : "@lead_title";
+    else if (isAsciiUpper(firstLetter)) casing = "@lead_title";
+    else casing = "@lead_lower";
+
+    if (words.size() == 1) return {length, casing, "@lead_alone"};
+    const std::string& next = words[1];
+    // str.isupper(): at least one letter and no lower-case letter
+    const bool nextIsUpper = std::any_of(next.begin(), next.end(), isAsciiLetter) && std::none_of(next.begin(), next.end(), isAsciiLower);
+    const char nextFirst = next.empty() ? '\0' : next.front();
+    std::string attach;
+    if (casing == "@lead_upper" && nextIsUpper) attach = "@lead_under";
+    else if (isAsciiUpper(nextFirst) || isAsciiDigit(nextFirst)) attach = "@lead_camel";
+    else attach = "@lead_under";
+    return {length, casing, attach};
+}
+
 void appendAll(Tokens& tokens, Tokens more) {
     tokens.insert(tokens.end(), std::make_move_iterator(more.begin()), std::make_move_iterator(more.end()));
 }
 
-// One entry of FEATURE_FUNCTIONS. Each feature function of scalar-3-0 returns non-empty strings,
-//   therefore the None and empty-string branches of get_feature_tokens never apply.
+// One entry of FEATURE_FUNCTIONS. Each feature function that the port computes returns non-empty
+//   strings, therefore the None and empty-string branches of get_feature_tokens never apply.
 struct Feature {
     std::string_view name;
     void (*append)(const IdentifierRow&, const Words&, Tokens&) = nullptr;
 };
 
-// FEATURE_ORDER, the order of the feature tokens in the model input
-constexpr std::array<Feature, 11> featureOrder{{
+// FEATURE_FUNCTIONS without lead_word, which needs the WordNet corpus of NLTK that the port lacks
+constexpr std::array<Feature, 12> featureFunctions{{
     {"context", [](const IdentifierRow& row, const Words&, Tokens& tokens) { tokens.push_back(contextToken(row.context)); }},
     {"hungarian", [](const IdentifierRow&, const Words& words, Tokens& tokens) { tokens.push_back(hungarianPrefixSplit(words)); }},
     {"hungarian_legacy",
@@ -499,7 +533,23 @@ constexpr std::array<Feature, 11> featureOrder{{
      [](const IdentifierRow& row, const Words& words, Tokens& tokens) {
          appendAll(tokens, systemOverlapFeatureTokens(words, row.systemName));
      }},
+    {"lead_shape", [](const IdentifierRow&, const Words& words, Tokens& tokens) { appendAll(tokens, leadShapeFeatureTokens(words)); }},
 }};
+
+const Feature* findFeature(std::string_view name) {
+    const auto found = std::find_if(featureFunctions.begin(), featureFunctions.end(), [name](const Feature& feature) { return feature.name == name; });
+    return found == featureFunctions.end() ? nullptr : &*found;
+}
+
+template <std::size_t size>
+bool contains(const std::array<std::string_view, size>& names, std::string_view name) {
+    return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+template <std::size_t size>
+std::vector<std::string> toStrings(const std::array<std::string_view, size>& names) {
+    return {names.begin(), names.end()};
+}
 
 std::string joinNames(const std::vector<std::string>& names) {
     std::string joined;
@@ -510,8 +560,8 @@ std::string joinNames(const std::vector<std::string>& names) {
     return joined;
 }
 
-// The positions in featureOrder of a feature list, as normalize_selected_features orders it
-std::vector<std::size_t> selectedFeatureIndices(const std::vector<std::string>& selected) {
+// The names of a feature list in FEATURE_ORDER, as normalize_selected_features orders them
+std::vector<std::string> orderedFeatureNames(const std::vector<std::string>& selected) {
     std::vector<std::string> names;
     for (const std::string& feature : selected) {
         const std::string_view name = pythonStrip(feature);
@@ -520,7 +570,7 @@ std::vector<std::size_t> selectedFeatureIndices(const std::vector<std::string>& 
 
     std::vector<std::string> unknown;
     for (const std::string& name : names) {
-        const bool known = std::any_of(featureOrder.begin(), featureOrder.end(), [&name](const Feature& feature) { return feature.name == name; });
+        const bool known = contains(release::availableFeatures, name) || contains(release::internalFeatures, name);
         if (!known && std::find(unknown.begin(), unknown.end(), name) == unknown.end()) unknown.push_back(name);
     }
     if (!unknown.empty()) {
@@ -529,35 +579,42 @@ std::vector<std::size_t> selectedFeatureIndices(const std::vector<std::string>& 
                                     ". Available features: " + joinNames(availableFeatures()));
     }
 
-    std::vector<std::size_t> indices;
-    for (std::size_t index = 0; index < featureOrder.size(); ++index) {
-        if (std::find(names.begin(), names.end(), featureOrder[index].name) != names.end()) indices.push_back(index);
+    std::vector<std::string> ordered;
+    for (const std::string_view name : release::featureOrder) {
+        if (std::find(names.begin(), names.end(), name) != names.end()) ordered.emplace_back(name);
     }
-    return indices;
+    return ordered;
 }
 
 } // namespace
 
 const std::vector<std::string>& availableFeatures() {
-    static const std::vector<std::string> features = {"context", "hungarian", "cvr", "digit", "digit_connector",
-                                                      "plural_suffix", "type", "type_overlap", "language", "sys_sim"};
+    static const std::vector<std::string> features = toStrings(release::availableFeatures);
     return features;
 }
 
 const std::vector<std::string>& legacyFeatures() {
-    static const std::vector<std::string> features = {"context", "hungarian_legacy", "cvr", "digit"};
+    static const std::vector<std::string> features = toStrings(release::legacyFeatures);
     return features;
 }
 
 std::vector<std::string> normalizeSelectedFeatures(const std::optional<std::vector<std::string>>& selected) {
-    if (!selected) return availableFeatures();
-    std::vector<std::string> names;
-    for (const std::size_t index : selectedFeatureIndices(*selected)) names.emplace_back(featureOrder[index].name);
-    return names;
+    if (selected) return orderedFeatureNames(*selected);
+    std::vector<std::string> defaults;
+    for (const std::string_view name : release::availableFeatures) {
+        if (!contains(release::optInFeatures, name)) defaults.emplace_back(name);
+    }
+    return defaults;
 }
 
 std::vector<std::string> modelFeatures(const std::optional<std::vector<std::string>>& savedFeatures) {
-    return normalizeSelectedFeatures(savedFeatures ? *savedFeatures : legacyFeatures());
+    std::vector<std::string> features = normalizeSelectedFeatures(savedFeatures ? *savedFeatures : legacyFeatures());
+    for (const std::string& name : features) {
+        if (findFeature(name) == nullptr) {
+            throw std::runtime_error("the model selects the feature " + name + ", which the C++ port does not compute (PORT.md)");
+        }
+    }
+    return features;
 }
 
 std::optional<std::vector<std::string>> readSavedFeatures(const std::string& configPath) {
@@ -586,7 +643,11 @@ std::vector<std::string> featureTokens(const IdentifierRow& row, const std::vect
     for (const std::string& word : words) requireAscii(word, "word");
 
     Tokens tokens;
-    for (const std::size_t index : selectedFeatureIndices(features)) featureOrder[index].append(row, words, tokens);
+    for (const std::string& name : orderedFeatureNames(features)) {
+        const Feature* feature = findFeature(name);
+        if (feature == nullptr) throw std::invalid_argument("the C++ port does not compute the feature " + name);
+        feature->append(row, words, tokens);
+    }
     return tokens;
 }
 

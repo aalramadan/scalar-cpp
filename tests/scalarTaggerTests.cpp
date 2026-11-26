@@ -71,13 +71,6 @@ bool sameWords(const std::vector<scalar::TaggedWord>& left, const std::vector<sc
                       });
 }
 
-// The answers of Python took their dictionary flags from the word lists of nameChecker, therefore the
-//  answers are compared on the split and the tags alone
-bool sameSplitAndTags(const std::vector<scalar::TaggedWord>& left, const std::vector<scalar::TaggedWord>& right) {
-    return std::equal(left.begin(), left.end(), right.begin(), right.end(),
-                      [](const scalar::TaggedWord& a, const scalar::TaggedWord& b) { return a.word == b.word && a.tag == b.tag; });
-}
-
 bool sameResult(const scalar::TagResult& left, const scalar::TagResult& right) {
     return left.tagged == right.tagged && left.error == right.error && sameWords(left.words, right.words);
 }
@@ -100,7 +93,7 @@ bool taggerGivesThePythonAnswersOnGoldenNames(const std::string& folder) {
     const std::vector<scalar::TagResult> results = sharedTagger().tagAll(namesOf(golden), std::thread::hardware_concurrency());
     std::size_t differing = 0;
     for (std::size_t i = 0; i < golden.size(); ++i) {
-        const bool equal = results[i].tagged == golden[i].tagged && (!golden[i].tagged || sameSplitAndTags(results[i].words, golden[i].words));
+        const bool equal = results[i].tagged == golden[i].tagged && (!golden[i].tagged || sameWords(results[i].words, golden[i].words));
         if (!equal && ++differing <= 10) {
             scalar::TagResult expected;
             expected.tagged = golden[i].tagged;
@@ -157,6 +150,20 @@ bool namesWithoutWordsAreTaggedWithNoWords(const std::string&) {
             passed = false;
         }
     }
+    return passed;
+}
+
+// The answers of SCALAR 3.0.0-rc.3 for openFile, a declaration whose type alone turns open into a verb
+bool typeOfTheNameReachesTheModel(const std::string&) {
+    const scalar::TagResult boolean = sharedTagger().tag({"openFile", "DECLARATION", "bool"});
+    const scalar::TagResult unknown = sharedTagger().tag({"openFile", "DECLARATION"});
+    const auto tags = [](const scalar::TagResult& result) {
+        std::vector<std::string> list;
+        for (const scalar::TaggedWord& word : result.words) list.push_back(word.tag);
+        return list;
+    };
+    const bool passed = tags(boolean) == std::vector<std::string>{"V", "N"} && tags(unknown) == std::vector<std::string>{"NM", "N"};
+    if (!passed) std::cout << "  bool: " << describe(boolean) << "\n  no type: " << describe(unknown) << "\n";
     return passed;
 }
 
@@ -255,6 +262,7 @@ int main(int argc, char* argv[]) {
         {"tagAllGivesTheAnswersOfTagOnEveryThreadCount", tagAllGivesTheAnswersOfTagOnEveryThreadCount},
         {"dictionaryFlagFollowsTheWordListsOfTheServer", dictionaryFlagFollowsTheWordListsOfTheServer},
         {"namesWithoutWordsAreTaggedWithNoWords", namesWithoutWordsAreTaggedWithNoWords},
+        {"typeOfTheNameReachesTheModel", typeOfTheNameReachesTheModel},
         {"namesTooLongForTheModelGetItsError", namesTooLongForTheModelGetItsError},
         {"longRunsOfOneCaseSplitOnASmallStack", longRunsOfOneCaseSplitOnASmallStack},
         {"wordsToJsonGivesTheBodyOfTheServer", wordsToJsonGivesTheBodyOfTheServer},

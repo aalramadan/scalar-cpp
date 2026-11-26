@@ -35,8 +35,9 @@ struct Encoding {
 //   methods keep no state between calls, therefore threads may share one instance.
 class WordPieceTokenizer {
 public:
-    // Loads vocab.txt of the folder after it checks that tokenizer.json, tokenizer_config.json,
-    //   and special_tokens_map.json hold the settings this port follows. Throws
+    // Loads the vocabulary of the folder, from vocab.txt or else from tokenizer.json, after it checks
+    //   that tokenizer.json, tokenizer_config.json, and any special_tokens_map.json hold the settings
+    //   this port follows. Throws
     //   std::runtime_error on a missing file or on any other setting.
     explicit WordPieceTokenizer(const std::string& modelDirectory);
 
@@ -45,10 +46,10 @@ public:
     //   [SEP]. One sequence needs no padding. Throws std::invalid_argument on a byte above 0x7F.
     Encoding encode(const std::vector<std::string>& words) const;
 
-    // The number of entries of vocab.txt
+    // The number of entries of the vocabulary
     std::size_t vocabularySize() const { return vocabulary.size(); }
 
-    // The id of a token of vocab.txt, or none
+    // The id of a token of the vocabulary, or none
     std::optional<std::int32_t> tokenId(const std::string& token) const;
 
 private:
@@ -64,7 +65,7 @@ private:
     std::int32_t                                      classificationId = 0;
     std::int32_t                                      separatorId      = 0;
     std::size_t                                       maxLength        = 0;  // model_max_length, [CLS] and [SEP] included
-    std::size_t                                       longestEntry     = 0;  // the bytes of the longest entry of vocab.txt
+    std::size_t                                       longestEntry     = 0;  // the bytes of the longest entry of the vocabulary
 };
 
 } // namespace scalar

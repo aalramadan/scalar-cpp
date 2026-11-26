@@ -6,15 +6,17 @@ ronin.split depends on the hash seed for a few names, such as TLS_ECDH_anon_WITH
 therefore the script runs only with PYTHONHASHSEED=0 to write the same files each time.
 
 * corpus_words.tsv: the first letter of the context and the words of each row of identifiers_tag.tsv.
-* corpus_digests.bin: per row, the digest of the legacy encoding, of the all-ten encoding with
-  an empty type, language, and system name, and of the all-ten encoding with the type, language,
-  and system name of row (index mod 2589) of input/tagger_data.tsv; little-endian, 32 bits each.
-* tagger_rows.tsv: context, type, language, system name, digest of the all-ten encoding, and the
-  words of each row of input/tagger_data.tsv.
+* corpus_digests.bin: per row, the digest of the legacy encoding, of the encoding of the default
+  features with an empty type, language, and system name, and of the encoding of the default
+  features with the type, language, and system name of a row of input/tagger_data.tsv, taken in
+  turn; little-endian, 32 bits each.
+* tagger_rows.tsv: context, type, language, system name, digest of the encoding of the default
+  features, and the words of each row of input/tagger_data.tsv.
 * stress_cases.tsv: edge cases with their full expected ids and positions, in the case format.
 * ratio_cases.tsv: SequenceMatcher(None, a, b).ratio() for pairs of strings.
 * float_sums.tsv: sum() of lists of floats, mostly cvr ratios whose plain running sum differs.
-* feature_lists.tsv: normalize_selected_features for feature lists, and the list of the model.
+* feature_lists.tsv: the features of the model, the legacy features, and normalize_selected_features
+  for feature lists.
 """
 
 import argparse
@@ -68,23 +70,23 @@ def stress_cases():
     for index, char in enumerate(PRINTABLE):
         context = CONTEXTS[index % len(CONTEXTS)]
         yield "stress/printable", "legacy", (context, "", "", ""), ["x" + char + "y", char, char * 3]
-        yield "stress/printable", "all10", (context, "T" + char + "int", char + "C++", "sys" + char), [char, "get" + char + "Value", "2"]
+        yield "stress/printable", "default", (context, "T" + char + "int", char + "C++", "sys" + char), [char, "get" + char + "Value", "2"]
     for char in CONTROL:
         yield "stress/control", "legacy", ("FUNCTION", "", "", ""), ["a" + char + "b", char + "x"]
         yield "stress/control", "legacy", ("FUNCTION", "", "", ""), [char]
-        yield "stress/control", "all10", (char + "CLASS" + char, char + "int" + char, char + "Java", char + "app" + char), ["get" + char, char + "Value"]
+        yield "stress/control", "default", (char + "CLASS" + char, char + "int" + char, char + "Java", char + "app" + char), ["get" + char, char + "Value"]
     for length in (99, 100, 101, 102, 150, 250):
         word = (LETTERS * 10)[:length]
         yield "stress/long", "legacy", ("DECLARATION", "", "", ""), [word]
         yield "stress/long", "legacy", ("DECLARATION", "", "", ""), ["get", word.upper(), "x"]
-        yield "stress/long", "all10", ("ATTRIBUTE", "", "", ""), [("Ab1" * 100)[:length]]
+        yield "stress/long", "default", ("ATTRIBUTE", "", "", ""), [("Ab1" * 100)[:length]]
         yield "stress/long", "legacy", ("PARAMETER", "", "", ""), ["9" * length]
         yield "stress/long", "legacy", ("PARAMETER", "", "", ""), [word + "_" + word[:50]]
-        yield "stress/long", "all10", ("FUNCTION", "", "", ""), [word[: length // 2] + " " + word[length // 2:]]
+        yield "stress/long", "default", ("FUNCTION", "", "", ""), [word[: length // 2] + " " + word[length // 2:]]
     for word in ["[CLS]", "[SEP]", "[PAD]", "[UNK]", "[MASK]", "a[CLS]b", "[cls]", "[[MASK]]", "[MASK][SEP]", "[UNK",
                  "UNK]", "[ CLS]", "x[PAD]y[PAD]", "[CLS][CLS]", "[MASK]2", "[SEP"]:
         yield "stress/special", "legacy", ("FUNCTION", "", "", ""), [word]
-        yield "stress/special", "all10", ("CLASS", "[CLS]", "[SEP]", "[PAD]"), ["get", word]
+        yield "stress/special", "default", ("CLASS", "[CLS]", "[SEP]", "[PAD]"), ["get", word]
     for words in ([], [""], [" "], ["\t"], ["a", ""], ["", "a"], ["a", " ", "b"], ["get", "\x00"], ["  value  "], [" 2 "],
                   ["a b"], ["\x1c2\x1f"]):
         for feature_set in FEATURE_SETS:
@@ -96,25 +98,25 @@ def stress_cases():
             yield "stress/hungarian", feature_set, ("ATTRIBUTE", "", "", ""), words
     for words in (["2"], ["get", "2", "set"], ["a2b"], ["x", "2"], ["2", "x"], ["12", "2", "2"], [" 2"], ["4", "2", "u"],
                   ["2", "2"], ["Two", "2", "3"], ["x", "2", "9"]):
-        yield "stress/digit", "all10", ("FUNCTION", "", "", ""), words
+        yield "stress/digit", "default", ("FUNCTION", "", "", ""), words
     for words in (["classes"], ["ties"], ["boxes"], ["status"], ["boss"], ["bus"], ["buses"], ["uses"], ["values", "keys"],
                   ["policies", "item"], ["get", "items", "Count"], ["is", "has", "was"], ["glass"], ["https"], ["Matches"],
                   ["axis"], ["virus"], ["IDS"], ["xs"], ["dies"], ["ies"], [" files "], ["Wishes"], ["heroes"], ["quizzes"]):
-        yield "stress/plural", "all10", ("DECLARATION", "", "", ""), words
+        yield "stress/plural", "default", ("DECLARATION", "", "", ""), words
     for words in (["aeiou"], ["xyz"], ["rhythm"], ["a"], ["bcdfg", "aei"], ["x1"], ["Strength"], ["queue"], ["a", "e"],
                   ["get", "Value", "Str"], ["bcd", "a", "x"], ["eye", "ccc"]):
         for feature_set in FEATURE_SETS:
             yield "stress/cvr", feature_set, ("PARAMETER", "", "", ""), words
     for index, type_str in enumerate(TYPES):
         words = [["get", "Value"], ["int", "Count"], ["size"], ["string", "Builder"], ["callback"], ["vec", "Map"]][index % 6]
-        yield "stress/type", "all10", (CONTEXTS[index % len(CONTEXTS)], type_str, "C++", ""), words
+        yield "stress/type", "default", (CONTEXTS[index % len(CONTEXTS)], type_str, "C++", ""), words
     for type_str, words in (("2DPoint", ["2", "D", "Point"]), ("32Bit", ["32", "Bit"]), ("Vec2D", ["vec2", "D"])):
-        yield "stress/type", "all10", ("PARAMETER", type_str, "C++", ""), words
+        yield "stress/type", "default", ("PARAMETER", type_str, "C++", ""), words
     for language in LANGUAGES:
-        yield "stress/language", "all10", ("CLASS", "", language, ""), ["Widget"]
+        yield "stress/language", "default", ("CLASS", "", language, ""), ["Widget"]
     for index, system in enumerate(SYSTEMS):
         for words in SYSTEM_WORDS[index % 3::3]:
-            yield "stress/system", "all10", ("FUNCTION", "", "Java", system), words
+            yield "stress/system", "default", ("FUNCTION", "", "Java", system), words
 
 
 def truncation_cases(reference):
@@ -149,8 +151,8 @@ def write_corpus(reference, corpus_path, tagger_rows, out_dir):
             _, _, type_str, language, system = tagger_rows[index % len(tagger_rows)]
             results = [
                 reference.encode("legacy", words, context, "", "", ""),
-                reference.encode("all10", words, context, "", "", ""),
-                reference.encode("all10", words, context, type_str, language, system),
+                reference.encode("default", words, context, "", "", ""),
+                reference.encode("default", words, context, type_str, language, system),
             ]
             words_file.write("\t".join([context[0]] + [escape(word) for word in words]) + "\n")
             digest_file.write(struct.pack("<3I", *(digest(result) for result in results)))
@@ -158,11 +160,11 @@ def write_corpus(reference, corpus_path, tagger_rows, out_dir):
 
 
 def write_tagger_rows(reference, tagger_rows, out_dir):
-    """Write tagger_rows.tsv with the all-ten encoding of each training row of SCALAR."""
+    """Write tagger_rows.tsv with the encoding of the default features of each training row of SCALAR."""
     with open(out_dir / "tagger_rows.tsv", "w", newline="\n", encoding="ascii") as handle:
         for name, context, type_str, language, system in tagger_rows:
             words = ronin.split(name)
-            result = reference.encode("all10", words, context, type_str, language, system)
+            result = reference.encode("default", words, context, type_str, language, system)
             fields = [escape(context), escape(type_str), escape(language), escape(system), f"{digest(result):08x}"]
             handle.write("\t".join(fields + [escape(word) for word in words]) + "\n")
 
@@ -232,7 +234,8 @@ def write_feature_lists(reference, out_dir):
         ["sys_sim", "\tlanguage\n"], ["hungarian", "hungarian_legacy"], ["\x1ctype\x1f", "type_overlap"],
     ]
     with open(out_dir / "feature_lists.tsv", "w", newline="\n", encoding="ascii") as handle:
-        handle.write("\t".join(["model"] + reference.features["legacy"]) + "\n")
+        handle.write("\t".join(["model"] + reference.model_features) + "\n")
+        handle.write("\t".join(["legacy"] + reference.features["legacy"]) + "\n")
         for features in lists:
             try:
                 outcome = ["ok"] + preprocessing.normalize_selected_features(features)
@@ -245,7 +248,7 @@ def write_feature_lists(reference, out_dir):
 def main():
     """Parse the paths and write every golden file."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scalar", type=Path, required=True, help="checkout of scanl_tagger")
+    parser.add_argument("--scalar", type=Path, required=True, help="checkout of scanl_tagger, for input/tagger_data.tsv")
     parser.add_argument("--model", type=Path, required=True, help="model folder")
     parser.add_argument("--corpus", type=Path, required=True, help="names and contexts, such as tools/identifiers_tag.tsv")
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "data" / "encoder")
@@ -254,7 +257,7 @@ def main():
         raise SystemExit("run with PYTHONHASHSEED=0, since ronin.split depends on the hash seed")
 
     started = time.perf_counter()
-    reference = ReferenceEncoder(args.scalar, args.model)
+    reference = ReferenceEncoder(args.model)
     tagger_rows = read_tagger_rows(args.scalar / "input" / "tagger_data.tsv")
     args.out.mkdir(parents=True, exist_ok=True)
     corpus_rows = write_corpus(reference, args.corpus, tagger_rows, args.out)

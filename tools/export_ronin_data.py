@@ -1,7 +1,7 @@
 """Regenerate the Ronin tables of data/ronin from the installed Spiral package.
 
 Needs Spiral of the cnewman fork at commit dff537320c15849c10e583968036df2d966eddee,
-the splitter that SCALAR scalar-3-0 calls, and checks that commit before it writes.
+the splitter that SCALAR pins in its pyproject.toml, and checks that commit before it writes.
 It takes the tables from a Ronin object after the default init(), as SCALAR uses
 them, and writes each one as sorted UTF-8 text with one entry per line.
 

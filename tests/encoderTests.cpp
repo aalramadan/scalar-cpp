@@ -12,6 +12,7 @@
 #include "caseFormat.hpp"
 
 #include "featureTokens.hpp"
+#include "jsonReader.hpp"
 #include "modelInput.hpp"
 #include "pythonSum.hpp"
 #include "sequenceMatcher.hpp"
@@ -112,7 +113,7 @@ public:
 
 void tokenizerLoadsTheVocabularyOfTheModelFolder(const TestContext& context) {
     const scalar::WordPieceTokenizer& tokenizer = *context.tokenizer;
-    failures.expect(tokenizer.vocabularySize() == 30522, "vocab.txt has 30522 entries");
+    failures.expect(tokenizer.vocabularySize() == 30522, "the vocabulary has 30522 entries");
     failures.expect(tokenizer.tokenId("[UNK]") == 100 && tokenizer.tokenId("[CLS]") == 101 && tokenizer.tokenId("[SEP]") == 102,
                     "the ids of [UNK], [CLS], and [SEP]");
     const scalar::Encoding encoding = tokenizer.encode({"[CLS]", "getX"});
@@ -122,10 +123,22 @@ void tokenizerLoadsTheVocabularyOfTheModelFolder(const TestContext& context) {
                     "the word index of each id of [CLS] getX");
 }
 
+// The lines of a vocab.txt that agrees with model.vocab of tokenizer.json
+std::string vocabularyFileOf(const std::filesystem::path& tokenizerJson) {
+    const scalar::JsonValue  json  = scalar::readJsonFile(tokenizerJson.string());
+    const scalar::JsonValue& vocab = *json.find("model")->find("vocab");
+    std::vector<std::string> lines(vocab.items.size());
+    for (std::size_t i = 0; i < vocab.keys.size(); ++i) lines[static_cast<std::size_t>(vocab.items[i].number)] = vocab.keys[i];
+    std::string text;
+    for (const std::string& line : lines) text += line + "\n";
+    return text;
+}
+
 void tokenizerRejectsSettingsThatThePortDoesNotFollow(const TestContext& context) {
     const TemporaryFolder folder("scalar-encoder-settings");
-    const char* files[] = {"vocab.txt", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"};
-    for (const char* file : files) std::filesystem::copy_file(context.modelFolder / file, folder.path / file);
+    for (const char* file : {"tokenizer.json", "tokenizer_config.json"}) {
+        std::filesystem::copy_file(context.modelFolder / file, folder.path / file);
+    }
 
     const auto loads = [&folder] {
         try {
@@ -137,6 +150,13 @@ void tokenizerRejectsSettingsThatThePortDoesNotFollow(const TestContext& context
         }
     };
     failures.expect(loads(), "an unchanged copy of the model folder loads");
+
+    // The files that older models add, which must agree with tokenizer.json and tokenizer_config.json
+    writeText(folder.path / "vocab.txt", vocabularyFileOf(folder.path / "tokenizer.json"));
+    writeText(folder.path / "special_tokens_map.json",
+              "{\"cls_token\": \"[CLS]\", \"mask_token\": \"[MASK]\", \"pad_token\": \"[PAD]\", "
+              "\"sep_token\": \"[SEP]\", \"unk_token\": \"[UNK]\"}");
+    failures.expect(loads(), "a vocab.txt and a special_tokens_map.json that agree with tokenizer.json load");
 
     struct Change {
         const char* file = nullptr;
@@ -161,10 +181,10 @@ void tokenizerRejectsSettingsThatThePortDoesNotFollow(const TestContext& context
         {"tokenizer_config.json", "\"strip_accents\": null", "\"strip_accents\": true"},
         {"tokenizer_config.json", "\"tokenize_chinese_chars\": true", "\"tokenize_chinese_chars\": false"},
         {"tokenizer_config.json", "\"model_max_length\": 512", "\"model_max_length\": 256"},
-        {"tokenizer_config.json", "\"added_tokens_decoder\": {",
+        {"tokenizer_config.json", "\"do_lower_case\": true",
          "\"added_tokens_decoder\": {\"1\": {\"content\": \"[unused0]\", \"lstrip\": false, \"normalized\": false, "
-         "\"rstrip\": false, \"single_word\": false, \"special\": true},"},
-        {"tokenizer_config.json", "\"extra_special_tokens\": {}", "\"extra_special_tokens\": {\"x\": \"[unused0]\"}"},
+         "\"rstrip\": false, \"single_word\": false, \"special\": true}}, \"do_lower_case\": true"},
+        {"tokenizer_config.json", "\"do_lower_case\": true", "\"extra_special_tokens\": {\"x\": \"[unused0]\"}, \"do_lower_case\": true"},
         {"tokenizer_config.json", "\"unk_token\": \"[UNK]\"", "\"unk_token\": \"[unused0]\""},
         {"special_tokens_map.json", "\"unk_token\": \"[UNK]\"", "\"unk_token\": \"[MASK]\""},
     };
@@ -191,7 +211,7 @@ void tokenizerRejectsSettingsThatThePortDoesNotFollow(const TestContext& context
 void featureListsNormalizeAsInPython(const TestContext& context) {
     for (const std::string& line : readLines(context.dataFolder / "feature_lists.tsv")) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(line);
-        if (fields[0] == "model") continue;
+        if (fields[0] == "model" || fields[0] == "legacy") continue;
         std::optional<std::vector<std::string>> given;
         std::size_t                             next = 1;
         if (fields[0] == "list") {
@@ -212,13 +232,15 @@ void featureListsNormalizeAsInPython(const TestContext& context) {
     }
 }
 
-void modelWithoutSavedFeaturesUsesTheLegacyFeatures(const TestContext& context) {
+void modelFeaturesComeFromTheConfigOrTheLegacyList(const TestContext& context) {
     const std::optional<std::vector<std::string>> saved = scalar::readSavedFeatures((context.modelFolder / "config.json").string());
-    failures.expect(!saved, "config.json of the model saves no feature list");
     for (const std::string& line : readLines(context.dataFolder / "feature_lists.tsv")) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(line);
         if (fields[0] == "model") {
             failures.expect(scalar::modelFeatures(saved) == unescapedWords(fields, 1), "the features of DistilBertTagger.__init__");
+        }
+        if (fields[0] == "legacy") {
+            failures.expect(scalar::modelFeatures(std::nullopt) == unescapedWords(fields, 1), "the features of a config without a list");
         }
     }
 
@@ -230,6 +252,15 @@ void modelWithoutSavedFeaturesUsesTheLegacyFeatures(const TestContext& context) 
     failures.expect(scalar::modelFeatures(listed) == std::vector<std::string>{"context", "cvr"}, "a saved list is normalized");
     writeText(config, "{\"selected_features\": []}");
     failures.expect(scalar::modelFeatures(scalar::readSavedFeatures(config.string())).empty(), "an empty saved list selects no feature");
+    writeText(config, "{\"selected_features\": [\"context\", \"lead_word\"]}");
+    bool refused = false;
+    try {
+        scalar::modelFeatures(scalar::readSavedFeatures(config.string()));
+    }
+    catch (const std::runtime_error&) {
+        refused = true;
+    }
+    failures.expect(refused, "a model that selects lead_word, which the port does not compute, is refused");
     writeText(config, "{\"selected_features\": null}");
     failures.expect(!scalar::readSavedFeatures(config.string()), "a null list counts as no list");
     writeText(config, "{\"selected_features\": \"context\"}");
@@ -304,7 +335,7 @@ void corpusRowsEncodeAsInPythonInThreeFeatureSets(const TestContext& context) {
                               scalarTests::unescapeField(fields[2])});
     }
 
-    const char* sets[] = {"legacy", "all10 with an empty type, language, and system", "all10 with the values of tagger_data.tsv"};
+    const char* sets[] = {"legacy", "default with an empty type, language, and system", "default with the values of tagger_data.tsv"};
     std::array<std::size_t, 3>               mismatches{};
     std::array<std::chrono::nanoseconds, 3> elapsed{};
     for (std::size_t index = 0; index < lines.size(); ++index) {
@@ -314,7 +345,7 @@ void corpusRowsEncodeAsInPythonInThreeFeatureSets(const TestContext& context) {
         row.context = scalarTests::contextOfLetter(fields[0].at(0));
         scalar::IdentifierRow taggerRow = taggerRows[index % taggerRows.size()];
         taggerRow.context               = row.context;
-        const std::pair<const scalar::IdentifierRow*, const char*> runs[] = {{&row, "legacy"}, {&row, "all10"}, {&taggerRow, "all10"}};
+        const std::pair<const scalar::IdentifierRow*, const char*> runs[] = {{&row, "legacy"}, {&row, "default"}, {&taggerRow, "default"}};
         for (std::size_t set = 0; set < 3; ++set) {
             const auto    start   = std::chrono::steady_clock::now();
             const Outcome outcome = scalarTests::encodeCase(*context.tokenizer, *runs[set].first, words, runs[set].second);
@@ -346,12 +377,12 @@ void taggerRowsEncodeAsInPythonWithTheirOwnTypeLanguageAndSystem(const TestConte
         const scalar::IdentifierRow row{scalarTests::unescapeField(fields[0]), scalarTests::unescapeField(fields[3]),
                                         scalarTests::unescapeField(fields[1]), scalarTests::unescapeField(fields[2])};
         const std::vector<std::string> words   = unescapedWords(fields, 5);
-        const Outcome                  outcome = scalarTests::encodeCase(*context.tokenizer, row, words, "all10");
+        const Outcome                  outcome = scalarTests::encodeCase(*context.tokenizer, row, words, "default");
         std::uint32_t                  expected = 0;
         std::from_chars(fields[4].data(), fields[4].data() + fields[4].size(), expected, 16);
         if (scalarTests::digestOf(outcome) != expected) {
             ++mismatches;
-            failures.fail(scalarTests::describeOutcome("all10", row, words, outcome));
+            failures.fail(scalarTests::describeOutcome("default", row, words, outcome));
         }
         ++compared;
     }
@@ -378,7 +409,7 @@ void wordsWithoutASubtokenThrowIdentifierTooLongError(const TestContext& context
 void bytesAboveAsciiAreRejected(const TestContext& context) {
     const auto rejects = [&context](const scalar::IdentifierRow& row, const std::vector<std::string>& words) {
         try {
-            scalar::encodeIdentifier(*context.tokenizer, row, words, scalarTests::featureList("all10"));
+            scalar::encodeIdentifier(*context.tokenizer, row, words, scalarTests::featureList("default"));
             return false;
         }
         catch (const std::invalid_argument&) {
@@ -405,7 +436,7 @@ const Test tests[] = {
     {"tokenizerLoadsTheVocabularyOfTheModelFolder", tokenizerLoadsTheVocabularyOfTheModelFolder},
     {"tokenizerRejectsSettingsThatThePortDoesNotFollow", tokenizerRejectsSettingsThatThePortDoesNotFollow},
     {"featureListsNormalizeAsInPython", featureListsNormalizeAsInPython},
-    {"modelWithoutSavedFeaturesUsesTheLegacyFeatures", modelWithoutSavedFeaturesUsesTheLegacyFeatures},
+    {"modelFeaturesComeFromTheConfigOrTheLegacyList", modelFeaturesComeFromTheConfigOrTheLegacyList},
     {"sequenceMatcherRatioEqualsDifflib", sequenceMatcherRatioEqualsDifflib},
     {"pythonSumEqualsTheBuiltInSum", pythonSumEqualsTheBuiltInSum},
     {"stressCasesEncodeAsInPython", stressCasesEncodeAsInPython},

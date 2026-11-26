@@ -1,22 +1,21 @@
-"""Compare two sets of SCALAR answers for the same names and contexts, word by word.
+"""Compare two sets of SCALAR answers for the same rows, word by word.
 
 Each input is a JSON Lines file in one of two forms. Answers of a SCALAR server, saved with
 the HTTP status and the body, hold the words in the body. The answers of
 tag_with_python_scalar.py and of scalarTagCorpus hold the words or the error. The output
 is one JSON file with the counts of rows that agree, rows whose split, tags, or dictionary
 flags differ, rows that fail on one side, the tag changes word by word, the counts per
-context, and the first differing rows as examples.
+context, and the first differing rows as examples. A row is its name, its context, and its
+type, language, and system where the answers hold them.
 """
 
 import argparse
 import json
 from collections import Counter
-from itertools import pairwise
 from pathlib import Path
 
 EXAMPLES = 40
-# The CRF of scalar-3-0 forbids these transitions between words, the CRF of master 2.2.0 none
-FORBIDDEN_PAIRS = {("N", "N"), ("N", "NPL"), ("NPL", "NPL")}
+OPTIONAL_COLUMNS = ("type", "language", "system")
 
 
 def normalize(record: dict) -> tuple:
@@ -35,20 +34,14 @@ def normalize(record: dict) -> tuple:
 
 
 def load_answers(path: Path) -> dict:
-    """Return the normalized answer of each (name, context) of a JSON Lines file."""
+    """Return the normalized answer of each row of a JSON Lines file."""
     answers = {}
     with open(path) as handle:
         for line in handle:
             record = json.loads(line)
-            answers[(record["name"], record["context"])] = normalize(record)
+            key = (record["name"], record["context"], *(record.get(name, "") for name in OPTIONAL_COLUMNS))
+            answers[key] = normalize(record)
     return answers
-
-
-def has_forbidden_pair(answer: tuple) -> bool:
-    """Return whether the tags of an answer hold a transition that scalar-3-0 forbids."""
-    kind, value = answer
-    tags = [tag for _, tag, _ in value] if kind == "words" else []
-    return any(pair in FORBIDDEN_PAIRS for pair in pairwise(tags))
 
 
 def compare(first: dict, second: dict) -> dict:
@@ -59,7 +52,6 @@ def compare(first: dict, second: dict) -> dict:
     by_context = {}
     examples = []
     words_compared = words_differing = 0
-    forbidden = Counter()
     for key in keys:
         (kind_a, value_a), (kind_b, value_b) = first[key], second[key]
         context = by_context.setdefault(key[1], Counter())
@@ -76,8 +68,6 @@ def compare(first: dict, second: dict) -> dict:
             tag_changes.update(f"{a}->{b}" for a, b in changed)
             if changed:
                 outcome = "different_tags"
-                forbidden["different_tags_with_forbidden_pair_in_first"] += has_forbidden_pair(first[key])
-                forbidden["different_tags_with_forbidden_pair_in_second"] += has_forbidden_pair(second[key])
             elif [f for _, _, f in value_a] != [f for _, _, f in value_b]:
                 outcome = "different_flags"
             else:
@@ -85,7 +75,7 @@ def compare(first: dict, second: dict) -> dict:
         rows[outcome] += 1
         context[outcome] += 1
         if outcome not in ("identical", "error_in_both") and len(examples) < EXAMPLES:
-            examples.append({"name": key[0], "context": key[1], "outcome": outcome,
+            examples.append({"row": dict(zip(("name", "context", *OPTIONAL_COLUMNS), key)), "outcome": outcome,
                              "first": first[key][1], "second": second[key][1]})
     return {
         "rows_in_first": len(first),
@@ -94,11 +84,6 @@ def compare(first: dict, second: dict) -> dict:
         "rows": dict(sorted(rows.items())),
         "words_compared": words_compared,
         "words_with_different_tag": words_differing,
-        "rows_with_forbidden_pair": {
-            "first": sum(has_forbidden_pair(first[key]) for key in keys),
-            "second": sum(has_forbidden_pair(second[key]) for key in keys),
-            **forbidden,
-        },
         "tag_changes": dict(tag_changes.most_common()),
         "by_context": {name: dict(sorted(counts.items())) for name, counts in sorted(by_context.items())},
         "examples": examples,

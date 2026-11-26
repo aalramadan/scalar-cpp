@@ -1,18 +1,21 @@
 """Reference encodings from the upstream SCALAR Python code for the tests of the C++ encoder.
 
-ReferenceEncoder loads DistilBertTagger of scanl_tagger scalar-3-0 as the SCALAR server does
-and then replaces its network with a recorder. tag_identifier therefore runs steps 1 to 3 as
+ReferenceEncoder loads DistilBertTagger of the installed scalar_tagger package as the SCALAR
+server does and then replaces its network with a recorder. tag_identifier therefore runs steps 1 to 3 as
 upstream code, and the recorder keeps the input ids, the attention mask, and the word mask of
 the forward pass. The module also writes the case format that the C++ tests read.
 """
 
 import csv
-import importlib
 import struct
-import sys
+
+from scalar_tagger.lm_based_tagger import distilbert_preprocessing as preprocessing
+from scalar_tagger.lm_based_tagger.distilbert_crf import DistilBertCRFForTokenClassification
+from scalar_tagger.lm_based_tagger.distilbert_tagger import DistilBertTagger
 
 TOO_LONG = "Identifier is too long for the model input."
-FEATURE_SETS = ("legacy", "all10")
+# The features of checkpoints without a saved list, and DEFAULT_FEATURES, which the port computes in full
+FEATURE_SETS = ("legacy", "default")
 CONTEXTS = ("FUNCTION", "CLASS", "ATTRIBUTE", "DECLARATION", "PARAMETER")
 
 
@@ -35,23 +38,16 @@ def make_recorder(base, captured):
 class ReferenceEncoder:
     """Steps 1 to 3 of DistilBertTagger.tag_identifier, run as upstream code."""
 
-    def __init__(self, scalar_dir, model_dir):
-        # The SCALAR checkout is a read-only input, therefore its modules load without bytecode caches
-        sys.dont_write_bytecode = True
-        sys.path.insert(0, str(scalar_dir))
-        tagger_module = importlib.import_module("src.lm_based_tagger.distilbert_tagger")
-        crf_module = importlib.import_module("src.lm_based_tagger.distilbert_crf")
-        preprocessing = importlib.import_module("src.lm_based_tagger.distilbert_preprocessing")
-        self.tagger = tagger_module.DistilBertTagger(str(model_dir), local=True, device="cpu")
-        if getattr(self.tagger.model.config, "selected_features", None) is not None:
-            raise AssertionError("the checkpoint saves a feature list; the legacy set does not apply")
+    def __init__(self, model_dir):
+        self.tagger = DistilBertTagger(str(model_dir), local=True, device="cpu")
+        self.model_features = list(self.tagger.selected_features)
         self.features = {
-            "legacy": list(self.tagger.selected_features),
-            "all10": preprocessing.normalize_selected_features(preprocessing.AVAILABLE_FEATURES),
+            "legacy": preprocessing.normalize_selected_features(preprocessing.LEGACY_FEATURES),
+            "default": preprocessing.normalize_selected_features(None),
         }
         self.preprocessing = preprocessing
         self.captured = []
-        self.tagger.model = make_recorder(crf_module.DistilBertCRFForTokenClassification, self.captured)
+        self.tagger.model = make_recorder(DistilBertCRFForTokenClassification, self.captured)
 
     def encode(self, feature_set, words, context, type_str, language, system_name):
         """Return (input ids, word positions), or None when tag_identifier raises the too-long ValueError."""

@@ -1,16 +1,17 @@
-model	context	hungarian_legacy	cvr	digit
-none	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim
+model	context	type
+legacy	context	hungarian_legacy	cvr	digit
+none	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim	lead_shape
 list	0	ok
 list	1	context	ok	context
 list	3	 cvr 	context	context	ok	context	cvr
 list	2	hungarian_legacy	digit	ok	hungarian_legacy	digit
-list	1	bogus	error	Unknown lm_based feature(s): bogus. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim
-list	4	zeta	alpha	context	zeta	error	Unknown lm_based feature(s): alpha, zeta. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim
+list	1	bogus	error	Unknown lm_based feature(s): bogus. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim, lead_shape, lead_word
+list	4	zeta	alpha	context	zeta	error	Unknown lm_based feature(s): alpha, zeta. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim, lead_shape, lead_word
 list	2		  	ok
 list	4	context	hungarian_legacy	cvr	digit	ok	context	hungarian_legacy	cvr	digit
-list	10	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim
-list	10	sys_sim	language	type_overlap	type	plural_suffix	digit_connector	digit	cvr	hungarian	context	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim
-list	1	Context	error	Unknown lm_based feature(s): Context. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim
+list	12	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim	lead_shape	lead_word	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim	lead_shape	lead_word
+list	12	lead_word	lead_shape	sys_sim	language	type_overlap	type	plural_suffix	digit_connector	digit	cvr	hungarian	context	ok	context	hungarian	cvr	digit	digit_connector	plural_suffix	type	type_overlap	language	sys_sim	lead_shape	lead_word
+list	1	Context	error	Unknown lm_based feature(s): Context. Available features: context, hungarian, cvr, digit, digit_connector, plural_suffix, type, type_overlap, language, sys_sim, lead_shape, lead_word
 list	2	sys_sim	\tlanguage\n	ok	language	sys_sim
 list	2	hungarian	hungarian_legacy	ok	hungarian	hungarian_legacy
 list	2	\x1ctype\x1f	type_overlap	ok	type	type_overlap

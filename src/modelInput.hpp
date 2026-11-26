@@ -8,7 +8,7 @@
  */
 
 // The model input of one identifier: its input ids and the position of the first subtoken of each word
-// Port of steps 1 to 3 of DistilBertTagger.tag_identifier, src/lm_based_tagger/distilbert_tagger.py of SCANL/scanl_tagger at 33f0327 (GPL-3.0)
+// Port of steps 1 to 3 of DistilBertTagger.tag_identifier, scalar_tagger/lm_based_tagger/distilbert_tagger.py of SCANL/scanl_tagger (GPL-3.0)
 
 #ifndef SCALAR_MODEL_INPUT_HPP
 #define SCALAR_MODEL_INPUT_HPP

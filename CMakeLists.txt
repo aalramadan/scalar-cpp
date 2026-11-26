@@ -2,7 +2,7 @@
 # CMake files for scalar-cpp, a C++ port of the SCALAR part-of-speech tagger for identifier names
 
 cmake_minimum_required(VERSION 3.28)
-project(scalar-cpp VERSION 1.0.0 LANGUAGES CXX)
+project(scalar-cpp VERSION 2.0.0 LANGUAGES CXX)
 
 if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release)
@@ -12,21 +12,7 @@ option(SCALAR_BUILD_TESTS "Build the tests and tools/scalarTagCorpus" ${PROJECT_
 
 find_package(Threads REQUIRED)
 
-# The published SCALAR model, pinned to its Hugging Face revision and to the SHA-256 of each file
-set(SCALAR_MODEL_REPO     "sourceslicer/scalar_lm_best")
-set(SCALAR_MODEL_REVISION "faef837c1d5f0f4904a53993aaeee747fec73e89")
-set(SCALAR_MODEL_FILES
-    config.json           3d872daf07417b2d7238dfbb8a4456950fe1c8402ec4ce1754aef74613b5e78e
-    vocab.txt             07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3
-    tokenizer.json        435667fab0c06c165b1283ecb422497c37124f2d6a35b2ac73dc876332fc9518
-    tokenizer_config.json 21c3bea73b6711617c657664adcd4d0b02ce20d2db4b2ebdd722a6da8da28bcd
-    special_tokens_map.json 3c3507f36dff57bce437223db3b3081d1e2b52ec3e56ee55438193ecb2c94dd6
-    model.safetensors     9c8f966c5079db16e9ee7154f0e73756413bee347c61b6c92bbad7bf947fc69a
-)
-
-# The NLTK words corpus, which the dictionary flag of SCALAR reads, pinned to its nltk_data commit
-set(NLTK_WORDS_URL    "https://raw.githubusercontent.com/nltk/nltk_data/b2085c79e91e22fc23c3f059cde261a73c5fc7a0/packages/corpora/words.zip")
-set(NLTK_WORDS_SHA256 "54ed02917d6771dcc3e8141218960d020947f7f2ccfd9ac9b320979349746015")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/scalarRelease.cmake")
 
 # The downloads go to the cache folder of the user, therefore a new build folder downloads nothing
 if(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")

@@ -25,7 +25,7 @@ namespace scalarTests {
 // One case: the inputs of tag_identifier and the outcome of the Python
 struct ReferenceCase {
     std::string               group;
-    std::string               featureSet;  // legacy or all10
+    std::string               featureSet;  // legacy or default
     scalar::IdentifierRow     row;
     std::vector<std::string>  words;
     bool                      tooLong = false;
@@ -51,7 +51,7 @@ std::string escapeField(std::string_view text);
 // Parses one line of the case format. Throws std::runtime_error on a malformed line.
 ReferenceCase parseCase(std::string_view line);
 
-// The normalized feature list of a feature set name: legacy or all10
+// The normalized feature list of a feature set name: legacy or default
 const std::vector<std::string>& featureList(const std::string& featureSet);
 
 // The full context name of the first letter that corpus_words.tsv stores

@@ -113,6 +113,25 @@ std::vector<std::string> readVocabularyLines(const std::string& path) {
     return lines;
 }
 
+// The tokens of model.vocab in tokenizer.json in the order of their ids, which must run from 0 without gaps
+std::vector<std::string> readJsonVocabulary(const std::string& path) {
+    const JsonValue  json  = readJsonFile(path);
+    const JsonValue& vocab = requireMember(requireMember(json, path, "model"), path, "vocab");
+    if (vocab.kind != JsonValue::Kind::Object) reject(path, "model.vocab");
+    std::vector<std::string> tokens(vocab.items.size());
+    std::vector<bool>        filled(vocab.items.size(), false);
+    for (std::size_t i = 0; i < vocab.keys.size(); ++i) {
+        const double id = vocab.items[i].kind == JsonValue::Kind::Number ? vocab.items[i].number : -1.0;
+        const auto   index = static_cast<std::size_t>(id);
+        if (id < 0 || id != static_cast<double>(index) || index >= tokens.size() || filled[index]) {
+            reject(path, "model.vocab id of " + vocab.keys[i]);
+        }
+        tokens[index] = vocab.keys[i];
+        filled[index] = true;
+    }
+    return tokens;
+}
+
 // One added token as tokenizer.json and tokenizer_config.json describe it: a special token of
 //   tokenizer_config.json that is matched on the raw text, never normalized or stripped
 void checkAddedToken(const JsonValue& token, const std::string& file, const std::string& content, const Vocabulary& vocabulary,
@@ -120,7 +139,7 @@ void checkAddedToken(const JsonValue& token, const std::string& file, const std:
     if (std::find(specialNames.begin(), specialNames.end(), content) == specialNames.end()) {
         reject(file, "added token " + content + " beyond the five special tokens");
     }
-    if (vocabulary.count(content) == 0) reject(file, "added token " + content + " outside vocab.txt");
+    if (vocabulary.count(content) == 0) reject(file, "added token " + content + " outside the vocabulary");
     requireBoolean(token, file, "single_word", false);
     requireBoolean(token, file, "lstrip", false);
     requireBoolean(token, file, "rstrip", false);
@@ -151,7 +170,7 @@ void checkTokenizerJson(const std::string& path, const Vocabulary& vocabulary, c
         const auto entry = vocabulary.find(vocab.keys[i]);
         if (entry == vocabulary.end() || vocab.items[i].kind != JsonValue::Kind::Number ||
             vocab.items[i].number != static_cast<double>(entry->second)) {
-            reject(path, "model.vocab entry " + vocab.keys[i] + " against vocab.txt");
+            reject(path, "model.vocab entry " + vocab.keys[i] + " against the vocabulary");
         }
     }
 
@@ -226,8 +245,11 @@ void checkTokenizerConfig(const JsonValue& config, const std::string& path, cons
     allowMissingOrEmpty(config, path, "extra_special_tokens");
     if (config.find("truncation_side") != nullptr) requireString(config, path, "truncation_side", "right");
 
+    // A tokenizer saved by the tokenizers backend of transformers 5 keeps its added tokens in tokenizer.json alone
+    const JsonValue* decoderEntry = config.find("added_tokens_decoder");
+    if (decoderEntry == nullptr) return;
+    const JsonValue& decoder = *decoderEntry;
     const std::vector<std::string> specialNames = names.all();
-    const JsonValue& decoder = requireMember(config, path, "added_tokens_decoder");
     if (decoder.kind != JsonValue::Kind::Object || decoder.items.size() != specialNames.size()) {
         reject(path, "the number of added_tokens_decoder entries");
     }
@@ -265,10 +287,13 @@ WordPieceTokenizer::WordPieceTokenizer(const std::string& modelDirectory) {
     const std::string jsonPath   = (folder / "tokenizer.json").string();
     const std::string configPath = (folder / "tokenizer_config.json").string();
 
-    const std::vector<std::string> lines = readVocabularyLines(vocabPath);
+    // Without vocab.txt, transformers builds the tokenizer from tokenizer.json alone
+    const bool hasVocabFile = dataFileExists(vocabPath);
+    const std::string vocabularySource = hasVocabFile ? vocabPath : jsonPath;
+    const std::vector<std::string> lines = hasVocabFile ? readVocabularyLines(vocabPath) : readJsonVocabulary(jsonPath);
     for (std::size_t index = 0; index < lines.size(); ++index) {
         if (!vocabulary.emplace(lines[index], static_cast<std::int32_t>(index)).second) {
-            throw std::runtime_error("SCALAR tokenizer: " + vocabPath + " repeats the token " + lines[index]);
+            throw std::runtime_error("SCALAR tokenizer: " + vocabularySource + " repeats the token " + lines[index]);
         }
         longestEntry = std::max(longestEntry, lines[index].size());
     }
@@ -277,7 +302,7 @@ WordPieceTokenizer::WordPieceTokenizer(const std::string& modelDirectory) {
     const JsonValue    config = readJsonFile(configPath);
     const SpecialNames names  = readSpecialNames(config, configPath);
     for (const std::string& name : names.all()) {
-        if (vocabulary.count(name) == 0) reject(configPath, "special token " + name + " outside vocab.txt");
+        if (vocabulary.count(name) == 0) reject(configPath, "special token " + name + " outside the vocabulary");
     }
     checkTokenizerConfig(config, configPath, vocabulary, names);
     checkTokenizerJson(jsonPath, vocabulary, names);

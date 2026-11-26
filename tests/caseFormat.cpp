@@ -134,9 +134,9 @@ ReferenceCase parseCase(std::string_view line) {
 
 const std::vector<std::string>& featureList(const std::string& featureSet) {
     static const std::vector<std::string> legacy = scalar::normalizeSelectedFeatures(scalar::legacyFeatures());
-    static const std::vector<std::string> all10  = scalar::normalizeSelectedFeatures(scalar::availableFeatures());
+    static const std::vector<std::string> defaults = scalar::normalizeSelectedFeatures(std::nullopt);
     if (featureSet == "legacy") return legacy;
-    if (featureSet == "all10") return all10;
+    if (featureSet == "default") return defaults;
     throw std::runtime_error("unknown feature set " + featureSet);
 }
 

@@ -30,7 +30,7 @@ foreach(test IN ITEMS
         tokenizerLoadsTheVocabularyOfTheModelFolder
         tokenizerRejectsSettingsThatThePortDoesNotFollow
         featureListsNormalizeAsInPython
-        modelWithoutSavedFeaturesUsesTheLegacyFeatures
+        modelFeaturesComeFromTheConfigOrTheLegacyList
         sequenceMatcherRatioEqualsDifflib
         pythonSumEqualsTheBuiltInSum
         stressCasesEncodeAsInPython
@@ -81,6 +81,7 @@ foreach(test IN ITEMS
         tagAllGivesTheAnswersOfTagOnEveryThreadCount
         dictionaryFlagFollowsTheWordListsOfTheServer
         namesWithoutWordsAreTaggedWithNoWords
+        typeOfTheNameReachesTheModel
         namesTooLongForTheModelGetItsError
         longRunsOfOneCaseSplitOnASmallStack
         wordsToJsonGivesTheBodyOfTheServer

@@ -1,7 +1,7 @@
 """Write the reference files of the C++ port of the SCALAR DistilBERT and CRF model.
 
 For each row of identifiers_tag.tsv, the script splits the name with spiral.ronin.split and tags the
-words with DistilBertTagger.tag_identifier of SCALAR (scanl_tagger, branch scalar-3-0). A forward hook
+words with DistilBertTagger.tag_identifier of the installed scalar_tagger package. A forward hook
 on the upstream DistilBertCRFForTokenClassification records the input ids and the word mask that
 tag_identifier builds and the emissions of the model. Each row of a reference file holds these inputs,
 the emissions at the word positions, the labels of tag_identifier, and the Viterbi margin between the
@@ -15,26 +15,20 @@ hold inputs and outputs of the torch kernels for GELU, the layer norm, a linear 
 import argparse
 import os
 import random
-import sys
 import time
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from scalar_tagger.lm_based_tagger.distilbert_tagger import DistilBertTagger
+from scalar_tagger.version import __version__ as SCALAR_VERSION
 from spiral import ronin
 from torchcrf import CRF
 
-# The checkout of scanl_tagger, the model folder, and the corpus come from the environment, since the
-# module of the checkout loads at import time (PORT.md, Upgrading SCALAR)
-UPSTREAM_DIR = os.environ.get("SCALAR_CHECKOUT", "")
 MODEL_DIR = os.environ.get("SCALAR_MODEL", "")
 CORPUS = os.environ.get("SCALAR_CORPUS", "")
-if not (UPSTREAM_DIR and MODEL_DIR and CORPUS):
-    raise SystemExit("set SCALAR_CHECKOUT, SCALAR_MODEL, and SCALAR_CORPUS")
-sys.path.insert(0, UPSTREAM_DIR)
-
-# pylint: disable=wrong-import-position
-from src.lm_based_tagger.distilbert_tagger import DistilBertTagger
+if not (MODEL_DIR and CORPUS):
+    raise SystemExit("set SCALAR_MODEL and SCALAR_CORPUS")
 
 GOLDEN_LOWEST_MARGINS = 150
 GOLDEN_LONGEST = 20
@@ -253,7 +247,7 @@ def main():
         return
     tagger = DistilBertTagger(MODEL_DIR, local=True, device="cpu")
     records = tag_corpus(tagger, read_corpus(arguments.limit))
-    header = [(f"SCALAR scalar-3-0 33f0327, model {os.path.basename(os.path.normpath(MODEL_DIR))}, "
+    header = [(f"SCALAR {SCALAR_VERSION}, model {os.path.basename(os.path.normpath(MODEL_DIR))}, "
                f"corpus {os.path.basename(CORPUS)}"),
               (f"torch {torch.__version__}, {torch.get_num_threads()} threads, CPU capability "
                f"{torch.backends.cpu.get_cpu_capability()}")]

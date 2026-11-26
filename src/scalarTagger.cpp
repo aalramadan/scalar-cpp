@@ -6,9 +6,9 @@
  *
  * This file is part of scalar-cpp.
  */
-// Tags names as listen() and dictionary_lookup() of src/tag_identifier.py of SCALAR scalar-3-0 do:
-// spiral.ronin.split, DistilBertTagger.tag_identifier with an empty type, language, and system name,
-// and the dictionary flag of each word.
+// Tags names as listen() and dictionary_lookup() of scalar_tagger/tag_identifier.py of SCALAR do:
+// spiral.ronin.split, DistilBertTagger.tag_identifier with the type, language, and system name of the
+// query, and the dictionary flag of each word.
 
 #include "scalarTagger.hpp"
 #include "asciiText.hpp"
@@ -157,7 +157,10 @@ void ScalarTagger::tagBatch(const std::vector<NameInContext>& names, std::size_t
                     continue;
                 }
                 IdentifierRow row;
-                row.context = names[i].context;
+                row.context    = names[i].context;
+                row.type       = names[i].type;
+                row.language   = names[i].language;
+                row.systemName = names[i].system;
                 inputs.push_back(encodeIdentifier(tokenizer, row, words[i - begin], features));
                 owners.push_back(i);
             }

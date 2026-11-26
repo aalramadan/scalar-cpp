@@ -33,10 +33,15 @@ struct TaggedWord {
     std::string dictionary;
 };
 
-// A name with the context of its category, such as FUNCTION or PARAMETER
+// A name with the context of its category, such as FUNCTION or PARAMETER, and the other inputs that the
+//   server reads from its query, which stay empty where unknown. The README of SCALAR says which context
+//   and type to send for each kind of name.
 struct NameInContext {
     std::string name;
     std::string context;
+    std::string type{};      // the declared type as the parser gives it, such as std::vector<Foo>, or the return type
+    std::string language{};  // such as C++ or Java
+    std::string system{};    // the project name, such as gimp
 };
 
 // The answer for one name. A name that Ronin splits into no words is tagged with no words, as the
@@ -49,7 +54,7 @@ struct TagResult {
 
 // The files of the tagger
 struct TaggerFiles {
-    std::string              modelDirectory;   // config.json, vocab.txt, the tokenizer files, model.safetensors
+    std::string              modelDirectory;   // config.json, the tokenizer files, model.safetensors
     std::string              roninDirectory;   // the tables that tools/export_ronin_data.py writes
     std::vector<std::string> nltkWordFiles;    // read as one text, as nltk.corpus.words.words() reads its files
     std::vector<std::string> customWordFiles;  // read as one text with strip() and lower() per line, as en.txt

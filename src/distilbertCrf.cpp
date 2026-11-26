@@ -8,7 +8,7 @@
  */
 
 // Loads the DistilBERT and CRF model of SCALAR and computes its emissions and labels for identifiers.
-// Port of DistilBertCRFForTokenClassification of src/lm_based_tagger/distilbert_crf.py, scanl_tagger 33f0327, GPL-3.0.
+// Port of DistilBertCRFForTokenClassification of scalar_tagger/lm_based_tagger/distilbert_crf.py, scanl_tagger, GPL-3.0.
 // Port of DistilBertModel of transformers/models/distilbert/modeling_distilbert.py, transformers 5.19.0, Apache-2.0.
 
 #include "distilbertCrf.hpp"
@@ -16,6 +16,7 @@
 #include "dataFile.hpp"
 #include "encoderKernels.hpp"
 #include "safetensors.hpp"
+#include "scalarRelease.hpp"
 
 #include "json.hpp"
 
@@ -35,9 +36,6 @@ namespace {
 
 constexpr float LAYER_NORM_EPSILON = 1e-12f; // every nn.LayerNorm of DistilBERT uses eps=1e-12
 constexpr float FORBIDDEN_SCORE    = -1e4f;  // the score _constrained_crf gives a forbidden transition
-
-// FORBIDDEN_TRANSITIONS of distilbert_crf.py: a noun directly followed by another noun should have been NM
-const std::pair<const char*, const char*> FORBIDDEN_TRANSITIONS[] = {{"N", "N"}, {"N", "NPL"}, {"NPL", "NPL"}};
 
 struct ModelConfig {
     std::size_t              dim          = 0;
@@ -217,11 +215,11 @@ DistilBertCrf::DistilBertCrf(const std::string& modelDirectory) {
     classifier = LinearLayer(weights.readF32("classifier.weight", {labelCount, dim}),
                              weights.readF32("classifier.bias", {labelCount}), dim);
     std::vector<float> transitions = weights.readF32("crf.transitions", {labelCount, labelCount});
-    std::map<std::string, std::size_t> labelIds;
+    std::map<std::string, std::size_t, std::less<>> labelIds;
     for (std::size_t id = 0; id < labelCount; ++id) {
         labelIds[labels[id]] = id;
     }
-    for (const auto& forbidden : FORBIDDEN_TRANSITIONS) {
+    for (const auto& forbidden : release::forbiddenTransitions) {
         const auto from = labelIds.find(forbidden.first);
         const auto to   = labelIds.find(forbidden.second);
         if (from != labelIds.end() && to != labelIds.end()) {

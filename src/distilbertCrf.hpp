@@ -8,7 +8,7 @@
  */
 
 // Tags the words of an identifier with the DistilBERT encoder and the constrained CRF of SCALAR.
-// Port of DistilBertCRFForTokenClassification of src/lm_based_tagger/distilbert_crf.py, scanl_tagger 33f0327, GPL-3.0.
+// Port of DistilBertCRFForTokenClassification of scalar_tagger/lm_based_tagger/distilbert_crf.py, scanl_tagger, GPL-3.0.
 
 #ifndef SCALAR_DISTILBERT_CRF_HPP
 #define SCALAR_DISTILBERT_CRF_HPP
@@ -25,7 +25,7 @@
 namespace scalar {
 
 // DistilBertCRFForTokenClassification in eval mode, loaded from config.json and model.safetensors of a
-// model folder. The CRF scores the transitions N to N, N to NPL, and NPL to NPL with -1e4. The const
+// model folder. The CRF scores the transitions of release::forbiddenTransitions with -1e4. The const
 // methods may run on several threads at once, each call on one thread.
 class DistilBertCrf {
 public:
