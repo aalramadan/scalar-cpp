@@ -26,7 +26,7 @@ namespace scalarTests {
 struct ReferenceCase {
     std::string               group;
     std::string               featureSet;  // legacy or default
-    scalar::IdentifierRow     row;
+    scalar::NameInContext     row;
     std::vector<std::string>  words;
     bool                      tooLong = false;
     std::vector<std::int32_t> ids;
@@ -58,7 +58,7 @@ const std::vector<std::string>& featureList(const std::string& featureSet);
 std::string contextOfLetter(char letter);
 
 // Runs encodeIdentifier and turns IdentifierTooLongError into an outcome
-Outcome encodeCase(const scalar::WordPieceTokenizer& tokenizer, const scalar::IdentifierRow& row,
+Outcome encodeCase(const scalar::WordPieceTokenizer& tokenizer, const scalar::NameInContext& row,
                    const std::vector<std::string>& words, const std::string& featureSet);
 
 // True when the C++ outcome equals the outcome of the Python
@@ -71,7 +71,7 @@ std::uint32_t digestOf(const Outcome& outcome);
 std::string describeMismatch(const ReferenceCase& expected, const Outcome& actual);
 
 // The inputs and the C++ outcome of an identifier, for a report of a digest mismatch
-std::string describeOutcome(const std::string& featureSet, const scalar::IdentifierRow& row, const std::vector<std::string>& words,
+std::string describeOutcome(const std::string& featureSet, const scalar::NameInContext& row, const std::vector<std::string>& words,
                             const Outcome& outcome);
 
 } // namespace scalarTests

@@ -46,9 +46,9 @@ std::string joinNumbers(const std::vector<Number>& numbers) {
     return joined;
 }
 
-std::string describeInputs(const std::string& featureSet, const scalar::IdentifierRow& row, const std::vector<std::string>& words) {
+std::string describeInputs(const std::string& featureSet, const scalar::NameInContext& row, const std::vector<std::string>& words) {
     std::string text = "features=" + featureSet + " context='" + escapeField(row.context) + "' type='" + escapeField(row.type) +
-                       "' language='" + escapeField(row.language) + "' system='" + escapeField(row.systemName) + "' words=[";
+                       "' language='" + escapeField(row.language) + "' system='" + escapeField(row.system) + "' words=[";
     for (std::size_t i = 0; i < words.size(); ++i) text += (i ? ", '" : "'") + escapeField(words[i]) + "'";
     return text + "]";
 }
@@ -122,7 +122,7 @@ ReferenceCase parseCase(std::string_view line) {
     reference.row.context    = unescapeField(fields[2]);
     reference.row.type       = unescapeField(fields[3]);
     reference.row.language   = unescapeField(fields[4]);
-    reference.row.systemName = unescapeField(fields[5]);
+    reference.row.system     = unescapeField(fields[5]);
     reference.tooLong        = fields[6] == "!";
     if (!reference.tooLong) {
         reference.ids       = parseNumbers<std::int32_t>(fields[6]);
@@ -147,7 +147,7 @@ std::string contextOfLetter(char letter) {
     throw std::runtime_error(std::string("unknown context letter ") + letter);
 }
 
-Outcome encodeCase(const scalar::WordPieceTokenizer& tokenizer, const scalar::IdentifierRow& row,
+Outcome encodeCase(const scalar::WordPieceTokenizer& tokenizer, const scalar::NameInContext& row,
                    const std::vector<std::string>& words, const std::string& featureSet) {
     Outcome outcome;
     try {
@@ -193,7 +193,7 @@ std::string describeMismatch(const ReferenceCase& expected, const Outcome& actua
            "\n  python: " + describe(python) + "\n  c++:    " + describe(actual);
 }
 
-std::string describeOutcome(const std::string& featureSet, const scalar::IdentifierRow& row, const std::vector<std::string>& words,
+std::string describeOutcome(const std::string& featureSet, const scalar::NameInContext& row, const std::vector<std::string>& words,
                             const Outcome& outcome) {
     return describeInputs(featureSet, row, words) + "\n  c++: " + describe(outcome);
 }

@@ -1,12 +1,12 @@
 # @file scalarRelease.cmake
-# The SCALAR release that scalar-cpp ports. A move to a newer release starts here, as PORT.md describes.
+# The SCALAR release that scalar-cpp ports, written by tools/update_release.py as PORT.md describes
 
-# The Python SCALAR that the port follows and that tools/compare_with_python.sh installs
+# The Python SCALAR that the port follows, which tools/compare_with_python.sh requires installed
 set(SCALAR_UPSTREAM_TAG    "v3.0.0-rc.3")
 set(SCALAR_UPSTREAM_COMMIT "728f1e1df1ce9ef449f941c5b1c471bea9587af8")
 
 # Its release model, RELEASE_MODEL and RELEASE_REVISION of scalar_tagger/cli.py, with the SHA-256 of
-#   each file. A file that the model lacks, such as vocab.txt, is left out of the list.
+#   each file of the model that the port reads
 set(SCALAR_MODEL_REPO     "sourceslicer/scalar_lm_v3")
 set(SCALAR_MODEL_REVISION "5e5e8b1fe1d012a1df523718c013c66bdd12c2ad")
 set(SCALAR_MODEL_FILES

@@ -156,12 +156,7 @@ void ScalarTagger::tagBatch(const std::vector<NameInContext>& names, std::size_t
                     results[i].tagged = true;
                     continue;
                 }
-                IdentifierRow row;
-                row.context    = names[i].context;
-                row.type       = names[i].type;
-                row.language   = names[i].language;
-                row.systemName = names[i].system;
-                inputs.push_back(encodeIdentifier(tokenizer, row, words[i - begin], features));
+                inputs.push_back(encodeIdentifier(tokenizer, names[i], words[i - begin], features));
                 owners.push_back(i);
             }
             catch (const std::exception& e) {

@@ -13,21 +13,14 @@
 #ifndef SCALAR_FEATURE_TOKENS_HPP
 #define SCALAR_FEATURE_TOKENS_HPP
 
+#include "nameInContext.hpp"
+
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace scalar {
-
-// The inputs of one identifier besides its words, as DistilBertTagger.tag_identifier gathers
-//   them. An empty string stands for an unknown value, as None does in the Python.
-struct IdentifierRow {
-    std::string context;     // such as FUNCTION or PARAMETER
-    std::string systemName;
-    std::string type;
-    std::string language;
-};
 
 // The tokens of the model input before tokenization: the feature tokens, then each word
 //   after its position token
@@ -59,12 +52,13 @@ std::vector<std::string> modelFeatures(const std::optional<std::vector<std::stri
 std::optional<std::vector<std::string>> readSavedFeatures(const std::string& configPath);
 
 // get_feature_tokens: the feature tokens of an identifier for a feature list, which is
-//   normalized first. Throws std::invalid_argument on a byte above 0x7F in the row or the words.
-std::vector<std::string> featureTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+//   normalized first. The features read the words and the other inputs of the row, never its name;
+//   an empty input stands for None of the Python. Throws std::invalid_argument on a byte above 0x7F in the row or the words.
+std::vector<std::string> featureTokens(const NameInContext& row, const std::vector<std::string>& words,
                                        const std::vector<std::string>& features);
 
 // build_model_input_tokens: the feature tokens, then @pos_0, @pos_1, or @pos_2 before each word
-ModelInputTokens buildModelInputTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+ModelInputTokens buildModelInputTokens(const NameInContext& row, const std::vector<std::string>& words,
                                        const std::vector<std::string>& features);
 
 } // namespace scalar

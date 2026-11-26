@@ -17,7 +17,7 @@
 
 namespace scalar {
 
-ModelInput encodeIdentifier(const WordPieceTokenizer& tokenizer, const IdentifierRow& row, const std::vector<std::string>& words,
+ModelInput encodeIdentifier(const WordPieceTokenizer& tokenizer, const NameInContext& row, const std::vector<std::string>& words,
                             const std::vector<std::string>& features) {
     const ModelInputTokens tokens   = buildModelInputTokens(row, words, features);
     Encoding               encoding = tokenizer.encode(tokens.tokens);

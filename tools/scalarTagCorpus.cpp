@@ -20,36 +20,40 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace {
 
-// The fields of a line without its line end, which is \n or \r\n
+// The fields of a line without its line end, which is \n or \r\n. An empty last field stays, as csv.DictReader
+//   keeps it, for a row with no type in the last column.
 std::vector<std::string> splitTabs(std::string line) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     std::vector<std::string> fields;
-    std::stringstream stream(line);
-    std::string field;
-    while (std::getline(stream, field, '\t')) fields.push_back(field);
+    std::size_t start = 0;
+    for (std::size_t tab = line.find('\t'); tab != std::string::npos; tab = line.find('\t', start)) {
+        fields.push_back(line.substr(start, tab - start));
+        start = tab + 1;
+    }
+    fields.push_back(line.substr(start));
     return fields;
 }
 
-// The columns besides name and context that a corpus may have, in the order of tools/tag_with_python_scalar.py
-constexpr const char* optionalColumns[] = {"type", "language", "system"};
+// A column besides name and context that a corpus may have, with the input of the tagger that it fills
+struct OptionalColumn {
+    const char*                        name;
+    std::string scalar::NameInContext::*member;
+};
+
+// In the order of tools/tag_with_python_scalar.py
+constexpr OptionalColumn optionalColumns[] = {
+    {"type", &scalar::NameInContext::type}, {"language", &scalar::NameInContext::language}, {"system", &scalar::NameInContext::system}};
 
 struct Corpus {
     std::vector<scalar::NameInContext> rows;
-    std::vector<std::string>           optionalColumnsPresent;
+    std::vector<OptionalColumn>        optionalColumnsPresent;
 };
-
-std::string& optionalField(scalar::NameInContext& row, const std::string& column) {
-    if (column == "type") return row.type;
-    if (column == "language") return row.language;
-    return row.system;
-}
 
 Corpus readCorpus(const std::string& path) {
     std::ifstream corpus(path);
@@ -66,10 +70,10 @@ Corpus readCorpus(const std::string& path) {
 
     Corpus result;
     std::vector<std::size_t> optionalIndices;
-    for (const char* column : optionalColumns) {
-        if (findColumn(column) == header.size()) continue;
-        result.optionalColumnsPresent.emplace_back(column);
-        optionalIndices.push_back(findColumn(column));
+    for (const OptionalColumn& column : optionalColumns) {
+        if (findColumn(column.name) == header.size()) continue;
+        result.optionalColumnsPresent.push_back(column);
+        optionalIndices.push_back(findColumn(column.name));
     }
     while (std::getline(corpus, line)) {
         // csv.DictReader of tools/tag_with_python_scalar.py skips empty lines as well
@@ -83,7 +87,7 @@ Corpus readCorpus(const std::string& path) {
         row.name    = field(nameColumn);
         row.context = field(contextColumn);
         for (std::size_t k = 0; k < optionalIndices.size(); ++k) {
-            optionalField(row, result.optionalColumnsPresent[k]) = field(optionalIndices[k]);
+            row.*result.optionalColumnsPresent[k].member = field(optionalIndices[k]);
         }
         result.rows.push_back(std::move(row));
     }
@@ -108,7 +112,7 @@ int main(int argc, char* argv[]) {
         std::ofstream answers(argv[2]);
         for (std::size_t i = 0; i < names.size(); ++i) {
             nlohmann::json answer = {{"name", names[i].name}, {"context", names[i].context}};
-            for (const std::string& column : corpus.optionalColumnsPresent) answer[column] = optionalField(corpus.rows[i], column);
+            for (const OptionalColumn& column : corpus.optionalColumnsPresent) answer[column.name] = names[i].*column.member;
             if (results[i].tagged) {
                 answer["words"] = nlohmann::json::array();
                 for (const scalar::TaggedWord& word : results[i].words) {

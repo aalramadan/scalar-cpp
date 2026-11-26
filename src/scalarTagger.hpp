@@ -14,6 +14,7 @@
 #define SCALAR_TAGGER_HPP
 
 #include "distilbertCrf.hpp"
+#include "nameInContext.hpp"
 #include "ronin.hpp"
 #include "wordpieceTokenizer.hpp"
 
@@ -31,17 +32,6 @@ struct TaggedWord {
     std::string word;
     std::string tag;
     std::string dictionary;
-};
-
-// A name with the context of its category, such as FUNCTION or PARAMETER, and the other inputs that the
-//   server reads from its query, which stay empty where unknown. The README of SCALAR says which context
-//   and type to send for each kind of name.
-struct NameInContext {
-    std::string name;
-    std::string context;
-    std::string type{};      // the declared type as the parser gives it, such as std::vector<Foo>, or the return type
-    std::string language{};  // such as C++ or Java
-    std::string system{};    // the project name, such as gimp
 };
 
 // The answer for one name. A name that Ronin splits into no words is tagged with no words, as the

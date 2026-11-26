@@ -29,6 +29,7 @@ target_compile_options(scalarEncoderTests PRIVATE ${SCALAR_WARNINGS})
 foreach(test IN ITEMS
         tokenizerLoadsTheVocabularyOfTheModelFolder
         tokenizerRejectsSettingsThatThePortDoesNotFollow
+        tokenizerTruncatesAtTheModelMaxLengthOfItsConfig
         featureListsNormalizeAsInPython
         modelFeaturesComeFromTheConfigOrTheLegacyList
         sequenceMatcherRatioEqualsDifflib

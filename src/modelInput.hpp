@@ -25,7 +25,7 @@
 namespace scalar {
 
 // The ValueError of tag_identifier: some word has no subtoken in the model input, after the
-//   truncation to 512 ids or for a word that tokenizes to nothing, such as an empty word
+//   truncation to model_max_length ids or for a word that tokenizes to nothing, such as an empty word
 class IdentifierTooLongError : public std::runtime_error {
 public:
     IdentifierTooLongError() : std::runtime_error("Identifier is too long for the model input.") {}
@@ -41,7 +41,7 @@ struct ModelInput {
 // Steps 1 to 3 of tag_identifier: the feature and position tokens, their tokenization, and the
 //   first subtoken of each word. Throws IdentifierTooLongError when a word has no position and
 //   std::invalid_argument on a byte above 0x7F or an unknown feature name.
-ModelInput encodeIdentifier(const WordPieceTokenizer& tokenizer, const IdentifierRow& row, const std::vector<std::string>& words,
+ModelInput encodeIdentifier(const WordPieceTokenizer& tokenizer, const NameInContext& row, const std::vector<std::string>& words,
                             const std::vector<std::string>& features);
 
 } // namespace scalar

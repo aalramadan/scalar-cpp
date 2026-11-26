@@ -20,7 +20,7 @@ ctest --test-dir build -R scalar
 | Tokenizer | tokenizers and transformers (`DistilBertTokenizerFast`) | 0.23.3 and 5.19.0 |
 | Kernels | torch (ATen) and oneDNN, CPU float32 | 2.14.1 and 3.12.0 |
 
-`cmake/scalarRelease.cmake` names the release and pins the model revision, the NLTK commit, and the SHA-256 of each downloaded file.
+`cmake/scalarRelease.cmake` names the release and pins the model revision, the NLTK commit, and the SHA-256 of each downloaded file. `tools/update_release.py` writes this file, as Upgrading SCALAR describes.
 
 ## How it works
 
@@ -28,12 +28,12 @@ A name and its context, such as `getValue` and `FUNCTION`, pass these steps in o
 
 1. `src/ronin.cpp`, `src/heuristicSplitter.cpp`, `src/englishStemmer.cpp`. Splits the name into words, as `spiral.ronin.split` does, with the tables of `data/ronin/`.
 2. `src/featureTokens.cpp`. Builds the feature tokens that the model selects in its `config.json`, the context and the declared type for the release model, and the position token before each word (`distilbert_preprocessing.py`). `src/sequenceMatcher.cpp` and `src/pythonSum.cpp` port the parts of `difflib` and `sum()` that the features need.
-3. `src/wordpieceTokenizer.cpp`, `src/modelInput.cpp`. Reads the vocabulary from `vocab.txt` or, for a model without `vocab.txt`, from `tokenizer.json`. Turns the tokens into input ids and records the first subtoken of each word (`DistilBertTagger.tag_identifier`). A word without a subtoken after the truncation to 512 ids gives the error `Identifier is too long for the model input.`
+3. `src/wordpieceTokenizer.cpp`, `src/modelInput.cpp`. Reads the vocabulary from `vocab.txt` or, for a model without `vocab.txt`, from `tokenizer.json`. Turns the tokens into input ids and records the first subtoken of each word (`DistilBertTagger.tag_identifier`). A word without a subtoken after the truncation to `model_max_length` of `tokenizer_config.json`, 512 ids for the release model, gives the error `Identifier is too long for the model input.`
 4. `src/safetensors.cpp`, `src/linearLayer.cpp`, `src/encoderKernels.cpp`, `src/distilbertCrf.cpp`. Runs the six layers of DistilBERT and the classifier on the CPU and reads the scores of each word (`distilbert_crf.py`).
 5. `src/crfDecoder.cpp`. Picks the tag of each word with the Viterbi algorithm of torchcrf, with the 15 tag pairs of `FORBIDDEN_TRANSITIONS` forbidden, such as N to N and any tag but PRE to PRE.
 6. `src/scalarTagger.cpp`. Passes the context, the type, the language, and the system of a name to the encoder. Sets the dictionary flag of each word, DW for a word of the NLTK words or of the custom word lists in any case, DD for digits, and UC otherwise. It tags many names at once on all cores and returns the JSON answer of the server.
 
-`src/scalarRelease.hpp` holds the lists that the Python SCALAR hard-codes, the forbidden tag pairs and the feature lists. `src/asciiText.cpp`, `src/jsonReader.cpp`, and `src/kernelDispatch.hpp` hold the shared helpers. `tools/scalarTagCorpus.cpp` tags a whole corpus for the comparison with the Python SCALAR.
+`src/scalarRelease.hpp` holds the constants of the Python SCALAR that the port reads, such as the forbidden tag pairs, the feature lists, and the word sets of the type feature. `src/nameInContext.hpp` holds the inputs of a name, which the tagger passes to the feature code unchanged. `src/asciiText.cpp`, `src/jsonReader.cpp`, and `src/kernelDispatch.hpp` hold the shared helpers. `tools/scalarTagCorpus.cpp` tags a whole corpus for the comparison with the Python SCALAR.
 
 ## Built-in files
 
@@ -69,7 +69,7 @@ ctest runs these parts offline against the golden files of `tests/data/`, which 
 
 ## Upgrading SCALAR
 
-Three files hold everything that names a SCALAR release. `cmake/scalarRelease.cmake` names the release and pins its model, `src/scalarRelease.hpp` holds the lists that the Python code hard-codes, and the header of each source file names the Python file it ports. A move to a newer release takes these steps.
+Two files hold everything that names a SCALAR release. `cmake/scalarRelease.cmake` names the release and pins its model with the SHA-256 of each file. `src/scalarRelease.hpp` holds the constants of the Python code that the port reads, such as `FORBIDDEN_TRANSITIONS` and `TYPE_BOOL_TOKENS`. `tools/update_release.py` writes the two files from a checkout of the release, therefore an upgrade never edits either file directly. The header of each source file names the Python file it ports. A move to a newer release takes these steps.
 
 1. Install the new release and check out the same tag, for its training data.
 
@@ -78,9 +78,16 @@ Three files hold everything that names a SCALAR release. `cmake/scalarRelease.cm
    git clone --branch <tag> https://github.com/SCANL/scanl_tagger.git
    ```
 
-2. Set the tag, the commit, and the model of the release in `cmake/scalarRelease.cmake`. The model is `RELEASE_MODEL` and `RELEASE_REVISION` of `scalar_tagger/cli.py`. Its list holds the SHA-256 of each file of the model. Configure and build again, which downloads the model.
-3. Compare the lists of `src/scalarRelease.hpp` with `FORBIDDEN_TRANSITIONS` of `distilbert_crf.py` and the feature lists of `distilbert_preprocessing.py`.
-4. Diff the inference code between the old and the new tag and port each change to the C++ file that How it works names. A new feature goes into `featureFunctions` of `src/featureTokens.cpp`. The tokenizer stops with the name of the file and the setting when the model brings a tokenizer setting that the port does not follow.
+2. Pin the release with the script. It reads the tag, the commit, the model of `RELEASE_MODEL` and `RELEASE_REVISION`, and the constants from the checkout. It then asks Hugging Face for the SHA-256 of each model file. It also checks that the English words that the release bundles equal the NLTK words of the port. Last, it lists the files that still name the previous release, such as `README.md`, for an update of their text. Configuring again downloads the new model.
+
+   ```bash
+   python3 tools/update_release.py scanl_tagger
+   cmake -B build && cmake --build build
+   ```
+
+   The script stops with the name of a constant that the release no longer assigns. A new constant that the port needs goes into `HEADER_CONSTANTS` of the script.
+
+3. Diff the inference code between the old and the new tag and port each change to the C++ file that How it works names. A new feature goes into `featureFunctions` of `src/featureTokens.cpp`. A new input of a name, such as the type in release 3.0.0, goes into `NameInContext` of `src/nameInContext.hpp` and into the corpus columns of `tools/scalarTagCorpus.cpp`, `tools/tag_with_python_scalar.py`, and `tools/compare_tag_answers.py`. The tokenizer stops with the name of the file and the setting when the model brings a tokenizer setting that the port does not follow.
 
    ```bash
    git diff <old tag> <new tag> -- scalar_tagger/tag_identifier.py scalar_tagger/tagging_backend.py \
@@ -88,14 +95,14 @@ Three files hold everything that names a SCALAR release. `cmake/scalarRelease.cm
        scalar_tagger/lm_based_tagger/distilbert_preprocessing.py
    ```
 
-5. Write the golden files of ctest again and run the tests.
+4. Write the golden files of ctest again and run the tests.
 
    ```bash
    tests/write_release_golden_files.sh <scanl_tagger checkout> build
    ctest --test-dir build
    ```
 
-6. Compare the port with the Python SCALAR on the corpus of the repository and on a corpus with types, which needs the columns name, context, and type. Every row should give the same answer.
+5. Compare the port with the Python SCALAR on the corpus of the repository and on a corpus with types, which needs the columns name, context, and type. Every row should give the same answer.
 
    ```bash
    tools/compare_with_python.sh build tools/identifiers_tag.tsv comparison

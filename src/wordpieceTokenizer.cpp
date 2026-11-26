@@ -17,8 +17,10 @@
 #include "jsonReader.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -30,7 +32,6 @@ namespace {
 //   ignores the values of tokenizer.json, which the loader checks for agreement
 constexpr std::size_t      maxInputCharsPerWord    = 100;
 constexpr std::string_view continuingSubwordPrefix = "##";
-constexpr std::size_t      modelMaxLength          = 512;
 
 // The special tokens of tokenizer_config.json, with the defaults of BertTokenizer
 struct SpecialNames {
@@ -147,7 +148,7 @@ void checkAddedToken(const JsonValue& token, const std::string& file, const std:
     requireBoolean(token, file, "special", true);
 }
 
-void checkTokenizerJson(const std::string& path, const Vocabulary& vocabulary, const SpecialNames& names) {
+void checkTokenizerJson(const std::string& path, const Vocabulary& vocabulary, const SpecialNames& names, std::size_t maxLength) {
     const JsonValue json = readJsonFile(path);
 
     const JsonValue& normalizer = requireMember(json, path, "normalizer");
@@ -216,7 +217,7 @@ void checkTokenizerJson(const std::string& path, const Vocabulary& vocabulary, c
         requireString(truncation, path, "direction", "Right");
         requireString(truncation, path, "strategy", "LongestFirst");
         requireNumber(truncation, path, "stride", 0);
-        requireNumber(truncation, path, "max_length", static_cast<double>(modelMaxLength));
+        requireNumber(truncation, path, "max_length", static_cast<double>(maxLength));
     }
     if (requireMember(json, path, "padding").kind != JsonValue::Kind::Null) reject(path, "padding");
 }
@@ -235,11 +236,21 @@ SpecialNames readSpecialNames(const JsonValue& config, const std::string& path) 
     return names;
 }
 
+// model_max_length, the limit of the call tokenizer(..., truncation=True) of SCALAR. transformers saves
+//   1e30 for a tokenizer without a limit, which the port does not follow.
+std::size_t readModelMaxLength(const JsonValue& config, const std::string& path) {
+    const JsonValue& value = requireMember(config, path, "model_max_length");
+    const bool valid = value.kind == JsonValue::Kind::Number && value.number >= 3 &&
+                       value.number <= static_cast<double>(std::numeric_limits<std::int32_t>::max()) &&
+                       value.number == static_cast<double>(static_cast<std::size_t>(value.number));
+    if (!valid) reject(path, "model_max_length");
+    return static_cast<std::size_t>(value.number);
+}
+
 void checkTokenizerConfig(const JsonValue& config, const std::string& path, const Vocabulary& vocabulary, const SpecialNames& names) {
     requireBoolean(config, path, "do_lower_case", true);
     allowMissingOrNull(config, path, "strip_accents");
     allowMissingOrBoolean(config, path, "tokenize_chinese_chars", true);
-    requireNumber(config, path, "model_max_length", static_cast<double>(modelMaxLength));
     allowMissingOrBoolean(config, path, "split_special_tokens", false);
     allowMissingOrEmpty(config, path, "additional_special_tokens");
     allowMissingOrEmpty(config, path, "extra_special_tokens");
@@ -305,7 +316,8 @@ WordPieceTokenizer::WordPieceTokenizer(const std::string& modelDirectory) {
         if (vocabulary.count(name) == 0) reject(configPath, "special token " + name + " outside the vocabulary");
     }
     checkTokenizerConfig(config, configPath, vocabulary, names);
-    checkTokenizerJson(jsonPath, vocabulary, names);
+    maxLength = readModelMaxLength(config, configPath);
+    checkTokenizerJson(jsonPath, vocabulary, names, maxLength);
     checkSpecialTokensMap((folder / "special_tokens_map.json").string(), names);
 
     for (const std::string& name : names.all()) {
@@ -315,7 +327,6 @@ WordPieceTokenizer::WordPieceTokenizer(const std::string& modelDirectory) {
     unknownId        = vocabulary.at(names.unknown);
     classificationId = vocabulary.at(names.classification);
     separatorId      = vocabulary.at(names.separator);
-    maxLength        = modelMaxLength;
     for (int c = 0; c < 128; ++c) {
         const auto entry   = vocabulary.find(std::string(1, static_cast<char>(c)));
         punctuationIds[static_cast<std::size_t>(c)] = entry == vocabulary.end() ? unknownId : entry->second;

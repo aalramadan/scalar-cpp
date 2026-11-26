@@ -19,7 +19,6 @@
 #include "sequenceMatcher.hpp"
 
 #include <algorithm>
-#include <array>
 #include <iterator>
 #include <stdexcept>
 #include <string_view>
@@ -31,31 +30,6 @@ namespace {
 
 using Words  = std::vector<std::string>;
 using Tokens = std::vector<std::string>;
-
-// The word sets of distilbert_preprocessing.py, such as TYPE_BOOL_TOKENS
-constexpr std::string_view typeBoolWords[] = {"bool", "boolean", "glboolean", "boolean_t"};
-constexpr std::string_view typeVoidWords[] = {"void"};
-constexpr std::string_view typeIntWords[] = {
-    "int", "integer", "byte", "word", "dword", "qword", "short", "long",
-    "size_t", "ssize_t", "ptrdiff_t", "int8_t", "int16_t", "int32_t", "int64_t",
-    "uint8_t", "uint16_t", "uint32_t", "uint64_t", "u8", "u16", "u32", "u64",
-    "i8", "i16", "i32", "i64", "usize", "isize"};
-constexpr std::string_view typeFloatWords[] = {"float", "double", "decimal", "real", "numeric", "number"};
-constexpr std::string_view typeCharWords[] = {"char", "wchar", "tchar", "char16_t", "char32_t", "rune"};
-constexpr std::string_view typeStringWords[] = {"string", "str", "text", "utf8", "utf16", "utf32", "cstring"};
-constexpr std::string_view typeContainerWords[] = {
-    "list", "array", "vector", "map", "set", "queue", "stack", "deque",
-    "collection", "iterator", "iterable", "stream", "buffer", "slice"};
-constexpr std::string_view typeFunctionWords[] = {
-    "func", "function", "callback", "predicate", "consumer", "supplier", "runnable", "lambda"};
-constexpr std::string_view typeQualifierWords[] = {
-    "const", "volatile", "static", "signed", "unsigned", "struct", "class", "enum", "union"};
-constexpr std::string_view nonPluralWords[] = {
-    "this", "is", "was", "has", "plus", "minus", "pass", "class", "glass",
-    "status", "alias", "bias", "canvas", "http", "https"};
-
-constexpr std::pair<std::string_view, std::string_view> contextTokens[] = {
-    {"FUNCTION", "@func"}, {"PARAMETER", "@param"}, {"ATTRIBUTE", "@attr"}, {"DECLARATION", "@decl"}, {"CLASS", "@class"}};
 
 template <std::size_t N>
 bool isIn(std::string_view word, const std::string_view (&set)[N]) {
@@ -105,7 +79,7 @@ Tokens dedupePreserveOrder(const Tokens& values) {
 // CONTEXT_MAP lookup of the context feature
 std::string contextToken(std::string_view context) {
     const std::string key = toUpperAscii(pythonStrip(context));
-    for (const auto& [name, token] : contextTokens) {
+    for (const auto& [name, token] : release::contextMap) {
         if (key == name) return std::string(token);
     }
     return "@unknown";
@@ -193,7 +167,7 @@ Tokens digitConnectorFeatureTokens(const Words& words) {
 std::string pluralSuffixBucket(std::string_view word) {
     const std::string normalized = toLowerAscii(pythonStrip(word));
     if (normalized.size() < 4 || !isAlphaText(normalized)) return "";
-    if (isIn(normalized, nonPluralWords)) return "";
+    if (isIn(normalized, release::nonPluralSSuffixStoplist)) return "";
 
     if (endsWith(normalized, "ies") && normalized.size() > 4) return "ies";
     for (const std::string_view suffix : {"ses", "xes", "zes", "ches", "shes", "oes"}) {
@@ -297,7 +271,7 @@ Words splitIdentifierLikeText(std::string_view text) {
 // _normalize_type_tokens
 Words typeWords(std::string_view type) {
     Words words = splitIdentifierLikeText(type);
-    words.erase(std::remove_if(words.begin(), words.end(), [](const std::string& word) { return isIn(word, typeQualifierWords); }),
+    words.erase(std::remove_if(words.begin(), words.end(), [](const std::string& word) { return isIn(word, release::typeQualifierTokens); }),
                 words.end());
     return words;
 }
@@ -337,7 +311,7 @@ bool containsIntTypeName(std::string_view text) {
 
 // _looks_int_like
 bool looksIntLike(std::string_view normalizedType, const Words& words) {
-    if (anyIn(words, typeIntWords)) return true;
+    if (anyIn(words, release::typeIntTokens)) return true;
     if (std::any_of(words.begin(), words.end(), [](const std::string& word) { return isSizedIntWord(word); })) return true;
     return containsIntTypeName(normalizedType);
 }
@@ -351,15 +325,15 @@ Tokens typeFeatureTokens(std::string_view type) {
     const auto has    = [&normalizedType](std::string_view part) { return normalizedType.find(part) != std::string::npos; };
 
     std::string bucket = "@type_object_like";
-    if (anyIn(words, typeBoolWords)) bucket = "@type_bool";
-    else if (anyIn(words, typeVoidWords)) bucket = "@type_void";
-    else if (anyIn(words, typeContainerWords)) bucket = "@type_container_like";
-    else if (anyIn(words, typeStringWords)) bucket = "@type_string_like";
-    else if (anyIn(words, typeCharWords)) bucket = "@type_char_like";
-    else if (anyIn(words, typeFloatWords)) bucket = "@type_float_like";
+    if (anyIn(words, release::typeBoolTokens)) bucket = "@type_bool";
+    else if (anyIn(words, release::typeVoidTokens)) bucket = "@type_void";
+    else if (anyIn(words, release::typeContainerTokens)) bucket = "@type_container_like";
+    else if (anyIn(words, release::typeStringTokens)) bucket = "@type_string_like";
+    else if (anyIn(words, release::typeCharTokens)) bucket = "@type_char_like";
+    else if (anyIn(words, release::typeFloatTokens)) bucket = "@type_float_like";
     else if (looksIntLike(normalizedType, words)) bucket = "@type_int_like";
     else if (has("enum")) bucket = "@type_enum_like";
-    else if (anyIn(words, typeFunctionWords)) bucket = "@type_function_like";
+    else if (anyIn(words, release::typeFunctionTokens)) bucket = "@type_function_like";
 
     Tokens tokens{bucket};
     if (has("*")) tokens.emplace_back("@type_ptr");
@@ -510,45 +484,41 @@ void appendAll(Tokens& tokens, Tokens more) {
 //   strings, therefore the None and empty-string branches of get_feature_tokens never apply.
 struct Feature {
     std::string_view name;
-    void (*append)(const IdentifierRow&, const Words&, Tokens&) = nullptr;
+    void (*append)(const NameInContext&, const Words&, Tokens&) = nullptr;
 };
 
 // FEATURE_FUNCTIONS without lead_word, which needs the WordNet corpus of NLTK that the port lacks
-constexpr std::array<Feature, 12> featureFunctions{{
-    {"context", [](const IdentifierRow& row, const Words&, Tokens& tokens) { tokens.push_back(contextToken(row.context)); }},
-    {"hungarian", [](const IdentifierRow&, const Words& words, Tokens& tokens) { tokens.push_back(hungarianPrefixSplit(words)); }},
+constexpr Feature featureFunctions[] = {
+    {"context", [](const NameInContext& row, const Words&, Tokens& tokens) { tokens.push_back(contextToken(row.context)); }},
+    {"hungarian", [](const NameInContext&, const Words& words, Tokens& tokens) { tokens.push_back(hungarianPrefixSplit(words)); }},
     {"hungarian_legacy",
-     [](const IdentifierRow&, const Words& words, Tokens& tokens) { tokens.push_back(hungarianPrefixLegacy(words)); }},
-    {"cvr", [](const IdentifierRow&, const Words& words, Tokens& tokens) { tokens.push_back(consonantVowelRatioBucket(words)); }},
-    {"digit", [](const IdentifierRow&, const Words& words, Tokens& tokens) { tokens.push_back(digitFeature(words)); }},
+     [](const NameInContext&, const Words& words, Tokens& tokens) { tokens.push_back(hungarianPrefixLegacy(words)); }},
+    {"cvr", [](const NameInContext&, const Words& words, Tokens& tokens) { tokens.push_back(consonantVowelRatioBucket(words)); }},
+    {"digit", [](const NameInContext&, const Words& words, Tokens& tokens) { tokens.push_back(digitFeature(words)); }},
     {"digit_connector",
-     [](const IdentifierRow&, const Words& words, Tokens& tokens) { appendAll(tokens, digitConnectorFeatureTokens(words)); }},
+     [](const NameInContext&, const Words& words, Tokens& tokens) { appendAll(tokens, digitConnectorFeatureTokens(words)); }},
     {"plural_suffix",
-     [](const IdentifierRow&, const Words& words, Tokens& tokens) { appendAll(tokens, pluralSuffixFeatureTokens(words)); }},
-    {"type", [](const IdentifierRow& row, const Words&, Tokens& tokens) { appendAll(tokens, typeFeatureTokens(row.type)); }},
+     [](const NameInContext&, const Words& words, Tokens& tokens) { appendAll(tokens, pluralSuffixFeatureTokens(words)); }},
+    {"type", [](const NameInContext& row, const Words&, Tokens& tokens) { appendAll(tokens, typeFeatureTokens(row.type)); }},
     {"type_overlap",
-     [](const IdentifierRow& row, const Words& words, Tokens& tokens) { appendAll(tokens, typeOverlapFeatureTokens(words, row.type)); }},
-    {"language", [](const IdentifierRow& row, const Words&, Tokens& tokens) { tokens.push_back(normalizeLanguage(row.language)); }},
+     [](const NameInContext& row, const Words& words, Tokens& tokens) { appendAll(tokens, typeOverlapFeatureTokens(words, row.type)); }},
+    {"language", [](const NameInContext& row, const Words&, Tokens& tokens) { tokens.push_back(normalizeLanguage(row.language)); }},
     {"sys_sim",
-     [](const IdentifierRow& row, const Words& words, Tokens& tokens) {
-         appendAll(tokens, systemOverlapFeatureTokens(words, row.systemName));
+     [](const NameInContext& row, const Words& words, Tokens& tokens) {
+         appendAll(tokens, systemOverlapFeatureTokens(words, row.system));
      }},
-    {"lead_shape", [](const IdentifierRow&, const Words& words, Tokens& tokens) { appendAll(tokens, leadShapeFeatureTokens(words)); }},
-}};
+    {"lead_shape", [](const NameInContext&, const Words& words, Tokens& tokens) { appendAll(tokens, leadShapeFeatureTokens(words)); }},
+};
 
 const Feature* findFeature(std::string_view name) {
-    const auto found = std::find_if(featureFunctions.begin(), featureFunctions.end(), [name](const Feature& feature) { return feature.name == name; });
-    return found == featureFunctions.end() ? nullptr : &*found;
+    const auto found = std::find_if(std::begin(featureFunctions), std::end(featureFunctions),
+                                    [name](const Feature& feature) { return feature.name == name; });
+    return found == std::end(featureFunctions) ? nullptr : found;
 }
 
-template <std::size_t size>
-bool contains(const std::array<std::string_view, size>& names, std::string_view name) {
-    return std::find(names.begin(), names.end(), name) != names.end();
-}
-
-template <std::size_t size>
-std::vector<std::string> toStrings(const std::array<std::string_view, size>& names) {
-    return {names.begin(), names.end()};
+template <std::size_t N>
+std::vector<std::string> toStrings(const std::string_view (&names)[N]) {
+    return {std::begin(names), std::end(names)};
 }
 
 std::string joinNames(const std::vector<std::string>& names) {
@@ -570,7 +540,7 @@ std::vector<std::string> orderedFeatureNames(const std::vector<std::string>& sel
 
     std::vector<std::string> unknown;
     for (const std::string& name : names) {
-        const bool known = contains(release::availableFeatures, name) || contains(release::internalFeatures, name);
+        const bool known = isIn(name, release::availableFeatures) || isIn(name, release::internalFeatures);
         if (!known && std::find(unknown.begin(), unknown.end(), name) == unknown.end()) unknown.push_back(name);
     }
     if (!unknown.empty()) {
@@ -600,11 +570,7 @@ const std::vector<std::string>& legacyFeatures() {
 
 std::vector<std::string> normalizeSelectedFeatures(const std::optional<std::vector<std::string>>& selected) {
     if (selected) return orderedFeatureNames(*selected);
-    std::vector<std::string> defaults;
-    for (const std::string_view name : release::availableFeatures) {
-        if (!contains(release::optInFeatures, name)) defaults.emplace_back(name);
-    }
-    return defaults;
+    return toStrings(release::defaultFeatures);
 }
 
 std::vector<std::string> modelFeatures(const std::optional<std::vector<std::string>>& savedFeatures) {
@@ -634,10 +600,10 @@ std::optional<std::vector<std::string>> readSavedFeatures(const std::string& con
     return features;
 }
 
-std::vector<std::string> featureTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+std::vector<std::string> featureTokens(const NameInContext& row, const std::vector<std::string>& words,
                                        const std::vector<std::string>& features) {
     requireAscii(row.context, "context");
-    requireAscii(row.systemName, "system name");
+    requireAscii(row.system, "system name");
     requireAscii(row.type, "type");
     requireAscii(row.language, "language");
     for (const std::string& word : words) requireAscii(word, "word");
@@ -651,7 +617,7 @@ std::vector<std::string> featureTokens(const IdentifierRow& row, const std::vect
     return tokens;
 }
 
-ModelInputTokens buildModelInputTokens(const IdentifierRow& row, const std::vector<std::string>& words,
+ModelInputTokens buildModelInputTokens(const NameInContext& row, const std::vector<std::string>& words,
                                        const std::vector<std::string>& features) {
     ModelInputTokens input;
     input.tokens       = featureTokens(row, words, features);

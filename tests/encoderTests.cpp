@@ -208,6 +208,24 @@ void tokenizerRejectsSettingsThatThePortDoesNotFollow(const TestContext& context
     failures.expect(!loads(), "a folder without tokenizer.json is rejected");
 }
 
+void tokenizerTruncatesAtTheModelMaxLengthOfItsConfig(const TestContext& context) {
+    const TemporaryFolder folder("scalar-encoder-length");
+    const std::pair<const char*, const char*> limits[] = {{"tokenizer.json", "\"max_length\": 512"},
+                                                          {"tokenizer_config.json", "\"model_max_length\": 512"}};
+    for (const auto& [file, limit] : limits) {
+        std::string       text  = readText(context.modelFolder / file);
+        const std::size_t found = text.find(limit);
+        if (found == std::string::npos || text.find(limit, found + 1) != std::string::npos) {
+            failures.fail(std::string(file) + " holds " + limit + " other than once");
+            return;
+        }
+        writeText(folder.path / file, text.replace(found + std::string_view(limit).size() - 3, 3, "16"));
+    }
+    const scalar::WordPieceTokenizer tokenizer(folder.path.string());
+    failures.expect(tokenizer.encode(std::vector<std::string>(40, "get")).ids.size() == 16,
+                    "a model_max_length of 16 truncates the input to 16 ids");
+}
+
 void featureListsNormalizeAsInPython(const TestContext& context) {
     for (const std::string& line : readLines(context.dataFolder / "feature_lists.tsv")) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(line);
@@ -328,11 +346,11 @@ void corpusRowsEncodeAsInPythonInThreeFeatureSets(const TestContext& context) {
     failures.expect(digests.size() == lines.size() * 12, "corpus_digests.bin holds three digests per row");
     if (digests.size() != lines.size() * 12) return;
 
-    std::vector<scalar::IdentifierRow> taggerRows;
+    std::vector<scalar::NameInContext> taggerRows;
     for (const std::string& line : tagger) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(line);
-        taggerRows.push_back({"", scalarTests::unescapeField(fields[3]), scalarTests::unescapeField(fields[1]),
-                              scalarTests::unescapeField(fields[2])});
+        taggerRows.push_back({"", "", scalarTests::unescapeField(fields[1]), scalarTests::unescapeField(fields[2]),
+                              scalarTests::unescapeField(fields[3])});
     }
 
     const char* sets[] = {"legacy", "default with an empty type, language, and system", "default with the values of tagger_data.tsv"};
@@ -341,11 +359,11 @@ void corpusRowsEncodeAsInPythonInThreeFeatureSets(const TestContext& context) {
     for (std::size_t index = 0; index < lines.size(); ++index) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(lines[index]);
         const std::vector<std::string>      words  = unescapedWords(fields, 1);
-        scalar::IdentifierRow               row;
+        scalar::NameInContext               row;
         row.context = scalarTests::contextOfLetter(fields[0].at(0));
-        scalar::IdentifierRow taggerRow = taggerRows[index % taggerRows.size()];
+        scalar::NameInContext taggerRow = taggerRows[index % taggerRows.size()];
         taggerRow.context               = row.context;
-        const std::pair<const scalar::IdentifierRow*, const char*> runs[] = {{&row, "legacy"}, {&row, "default"}, {&taggerRow, "default"}};
+        const std::pair<const scalar::NameInContext*, const char*> runs[] = {{&row, "legacy"}, {&row, "default"}, {&taggerRow, "default"}};
         for (std::size_t set = 0; set < 3; ++set) {
             const auto    start   = std::chrono::steady_clock::now();
             const Outcome outcome = scalarTests::encodeCase(*context.tokenizer, *runs[set].first, words, runs[set].second);
@@ -374,8 +392,8 @@ void taggerRowsEncodeAsInPythonWithTheirOwnTypeLanguageAndSystem(const TestConte
     std::size_t mismatches = 0;
     for (const std::string& line : readLines(context.dataFolder / "tagger_rows.tsv")) {
         const std::vector<std::string_view> fields = scalarTests::splitFields(line);
-        const scalar::IdentifierRow row{scalarTests::unescapeField(fields[0]), scalarTests::unescapeField(fields[3]),
-                                        scalarTests::unescapeField(fields[1]), scalarTests::unescapeField(fields[2])};
+        const scalar::NameInContext row{"", scalarTests::unescapeField(fields[0]), scalarTests::unescapeField(fields[1]),
+                                        scalarTests::unescapeField(fields[2]), scalarTests::unescapeField(fields[3])};
         const std::vector<std::string> words   = unescapedWords(fields, 5);
         const Outcome                  outcome = scalarTests::encodeCase(*context.tokenizer, row, words, "default");
         std::uint32_t                  expected = 0;
@@ -390,7 +408,7 @@ void taggerRowsEncodeAsInPythonWithTheirOwnTypeLanguageAndSystem(const TestConte
 }
 
 void wordsWithoutASubtokenThrowIdentifierTooLongError(const TestContext& context) {
-    const scalar::IdentifierRow row{"FUNCTION", "", "", ""};
+    const scalar::NameInContext row{"", "FUNCTION"};
     const auto throwsTooLong = [&context, &row](const std::vector<std::string>& words) {
         try {
             scalar::encodeIdentifier(*context.tokenizer, row, words, scalarTests::featureList("legacy"));
@@ -407,7 +425,7 @@ void wordsWithoutASubtokenThrowIdentifierTooLongError(const TestContext& context
 }
 
 void bytesAboveAsciiAreRejected(const TestContext& context) {
-    const auto rejects = [&context](const scalar::IdentifierRow& row, const std::vector<std::string>& words) {
+    const auto rejects = [&context](const scalar::NameInContext& row, const std::vector<std::string>& words) {
         try {
             scalar::encodeIdentifier(*context.tokenizer, row, words, scalarTests::featureList("default"));
             return false;
@@ -416,9 +434,9 @@ void bytesAboveAsciiAreRejected(const TestContext& context) {
             return true;
         }
     };
-    failures.expect(rejects({"FUNCTION", "", "", ""}, {"caf\xc3\xa9"}), "a word in UTF-8");
-    failures.expect(rejects({"FUNCTION", "", "\xff", ""}, {"x"}), "a type byte above 0x7F");
-    failures.expect(rejects({"FUNCTION\x80", "", "", ""}, {"x"}), "a context byte above 0x7F");
+    failures.expect(rejects({"", "FUNCTION"}, {"caf\xc3\xa9"}), "a word in UTF-8");
+    failures.expect(rejects({"", "FUNCTION", "\xff"}, {"x"}), "a type byte above 0x7F");
+    failures.expect(rejects({"", "FUNCTION\x80"}, {"x"}), "a context byte above 0x7F");
     try {
         context.tokenizer->encode({"\xe4"});
         failures.fail("the tokenizer rejects a byte above 0x7F");
@@ -435,6 +453,7 @@ struct Test {
 const Test tests[] = {
     {"tokenizerLoadsTheVocabularyOfTheModelFolder", tokenizerLoadsTheVocabularyOfTheModelFolder},
     {"tokenizerRejectsSettingsThatThePortDoesNotFollow", tokenizerRejectsSettingsThatThePortDoesNotFollow},
+    {"tokenizerTruncatesAtTheModelMaxLengthOfItsConfig", tokenizerTruncatesAtTheModelMaxLengthOfItsConfig},
     {"featureListsNormalizeAsInPython", featureListsNormalizeAsInPython},
     {"modelFeaturesComeFromTheConfigOrTheLegacyList", modelFeaturesComeFromTheConfigOrTheLegacyList},
     {"sequenceMatcherRatioEqualsDifflib", sequenceMatcherRatioEqualsDifflib},
